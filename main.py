@@ -4,12 +4,14 @@ import numpy as np
 # 1. Carrega e redimensiona a imagem
 todasbolhas = 'todasbolhas.png'
 pagina1 = 'imagens_pdf/pagina_1.png'
-pagina2 = 'imagens_pdf/pagina_2.png'
+pagina_1_erro1 = 'imagens_pdf/pagina_1_erro1.png'
+marcacao = 'imagens_pdf/marcacao_.png'
+
 gabarito_correto = [
     'C', 'D', 'C', 'D', 'C','D', 'A', 'B', 'E', 'C',
     'B', 'C', 'D', 'C', 'D','E', 'C', 'C', 'B', 'A'
 ]
-imagem = cv2.imread(pagina2)
+imagem = cv2.imread(pagina_1_erro1)
 if imagem is None:
     raise ValueError("Imagem não encontrada!")
 
@@ -110,15 +112,24 @@ def bolha_foi_marcada(bolha_gabarito, bolhas_detectadas, margem=10):
 def identificar_marcadas(bolhas_gabarito, bolhas_detectadas, lado="esquerdo"):
     respostas = []
     letras = ['A', 'B', 'C', 'D', 'E']
+    
     for i in range(0, len(bolhas_gabarito), 5):
         grupo = bolhas_gabarito[i:i+5]
-        resposta = "-"
+        marcadas = []
+
         for j, bolha in enumerate(grupo):
             if bolha_foi_marcada(bolha, bolhas_detectadas):
-                resposta = letras[j]
-                break  # assume apenas uma marca por linha
-        respostas.append(resposta)
+                marcadas.append(letras[j])
+
+        if len(marcadas) == 0:
+            respostas.append("-")  # Nenhuma marcada
+        elif len(marcadas) == 1:
+            respostas.append(marcadas[0])  # Uma marcada
+        else:
+            respostas.append("*")  # Múltiplas marcadas → ANULADA
+
     return respostas
+
 respostas_esquerda = identificar_marcadas(bolhas_esquerda, coluna_esquerda, lado="esquerdo")
 respostas_direita = identificar_marcadas(bolhas_direita, coluna_direita, lado="direito")
 
@@ -128,18 +139,40 @@ respostas_final = respostas_esquerda + respostas_direita
 # === COMPARA COM GABARITO E MOSTRA RESULTADO ===
 print("\n📋 RESULTADO FINAL:")
 acertos = 0
+anuladas = 0
+brancas = 0
 
 for i, resposta_aluno in enumerate(respostas_final):
     resposta_correta = gabarito_correto[i]
-    simbolo = "✔️" if resposta_aluno == resposta_correta else "❌"
-    if resposta_aluno == resposta_correta:
+
+    if resposta_aluno == "*":
+        status = "❌ Questão ANULADA (múltiplas)"
+        anuladas += 1
+    elif resposta_aluno == "-":
+        status = "⚪ Questão EM BRANCO"
+        brancas += 1
+    elif resposta_aluno == resposta_correta:
+        status = "✔️ CORRETA"
         acertos += 1
-    print(f"Questão {i+1:02}: Marcou [{resposta_aluno}] - Correta: [{resposta_correta}] {simbolo}")
+    else:
+        status = f"❌ ERRADA (correta: {resposta_correta})"
+
+    print(f"Questão {i+1:02}: Marcou [{resposta_aluno}] → {status}")
 
 print(f"\n✅ Total de acertos: {acertos}/20")
-# print(f"📝 Nota final: {acertos * 5} pontos")  # ou multiplique por 6, se preferir
+print(f"❌ Anuladas (múltiplas): {anuladas}")
+print(f"⚪ Em branco: {brancas}")
+
+
+# Cria uma cópia da imagem original para sobreposição
+imagem_recombinada = imagem_original.copy()
+
+# Substitui a área recortada pela imagem com marcações (imagem_saida)
+imagem_recombinada[y_inicio:y_fim, x_inicio:x_fim] = imagem_saida
+
+cv2.imshow('Imagem Recombinada', imagem_recombinada)
 
 cv2.imshow('imagem', imagem_original)
-cv2.imshow('Bolhas Detectadas', imagem_saida)
+# cv2.imshow('Bolhas Detectadas', imagem_saida)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
