@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 
 # 1. Carrega e redimensiona a imagem
-todasbolhas = 'todasbolhas.png'
+todasbolhas = 'imagens_pdf/todasbolhas.png'
 pagina1 = 'imagens_pdf/pagina_1.png'
 pagina_1_erro1 = 'imagens_pdf/pagina_1_erro1.png'
 marcacao = 'imagens_pdf/marcacao_.png'
@@ -33,23 +33,27 @@ imagem_original = nova_imagem
 nova_imagem = nova_imagem[y_inicio:y_fim, x_inicio:x_fim]
 
 #lista da coordenadas bolhas na coluna esquerda 
+v_col_esq = [79, 101, 125, 150, 174]
+v_lin_esq = [21, 48, 74, 99, 126, 151, 176, 200, 227, 251]
+tamBolha = 20
 
 bolhas_esquerda = [
-	(79, 21, 20, 20),  (101, 21, 20, 20),  (125, 21, 20, 20),  (150, 21, 20, 20),  (174, 21, 20, 20),
-	(79, 48, 20, 20),  (101, 48, 20, 20),  (125, 48, 20, 20),  (150, 48, 20, 20),  (174, 48, 20, 20),
-	(79, 74, 20, 20),  (101, 74, 20, 20),  (125, 74, 20, 20),  (150, 74, 20, 20),  (174, 74, 20, 20), 
-	(79, 99, 20, 20),  (101, 99, 20, 20),  (125, 99, 20, 20),  (150, 99, 20, 20),  (174, 99, 20, 20),
-	(79, 126, 20, 20), (101, 126, 20, 20), (125, 126, 20, 20), (150, 125, 20, 20), (174, 126, 20, 20), 
-	(79, 151, 20, 20), (101, 151, 20, 20), (125, 151, 20, 20), (150, 151, 20, 20), (174, 151, 20, 20),
-	(79, 176, 20, 20), (101, 176, 20, 20), (125, 176, 20, 20), (150, 176, 20, 20), (174, 176, 20, 20), 
-	(79, 200, 20, 20), (101, 200, 20, 20), (125, 200, 20, 20), (150, 200, 20, 20), (174, 200, 20, 20), 
-	(79, 227, 20, 20), (101, 227, 20, 20), (125, 227, 20, 20), (150, 227, 20, 20), (174, 227, 20, 20), 
-	(79, 251, 20, 20), (101, 251, 20, 20), (125, 251, 20, 20), (150, 251, 20, 20), (174, 251, 20, 20)
+	(v_col_esq[0],v_lin_esq[0], tamBolha, tamBolha),(v_col_esq[1], v_lin_esq[0], tamBolha, tamBolha),(v_col_esq[2], v_lin_esq[0], tamBolha, tamBolha),(v_col_esq[3],v_lin_esq[0], tamBolha, tamBolha),(v_col_esq[4],v_lin_esq[0], tamBolha, tamBolha),
+	(v_col_esq[0],v_lin_esq[1], tamBolha, tamBolha),(v_col_esq[1], v_lin_esq[1], tamBolha, tamBolha),(v_col_esq[2], v_lin_esq[1], tamBolha, tamBolha),(v_col_esq[3],v_lin_esq[1], tamBolha, tamBolha),(v_col_esq[4],v_lin_esq[1], tamBolha, tamBolha),
+	(v_col_esq[0],v_lin_esq[2], tamBolha, tamBolha),(v_col_esq[1], v_lin_esq[2], tamBolha, tamBolha),(v_col_esq[2], v_lin_esq[2], tamBolha, tamBolha),(v_col_esq[3],v_lin_esq[2], tamBolha, tamBolha),(v_col_esq[4],v_lin_esq[2], tamBolha, tamBolha), 
+	(v_col_esq[0],v_lin_esq[3], tamBolha, tamBolha),(v_col_esq[1], v_lin_esq[3], tamBolha, tamBolha),(v_col_esq[2], v_lin_esq[3], tamBolha, tamBolha),(v_col_esq[3],v_lin_esq[3], tamBolha, tamBolha),(v_col_esq[4],v_lin_esq[3], tamBolha, tamBolha),
+	(v_col_esq[0],v_lin_esq[4], tamBolha, tamBolha),(v_col_esq[1], v_lin_esq[4], tamBolha, tamBolha),(v_col_esq[2], v_lin_esq[4], tamBolha, tamBolha),(v_col_esq[3],v_lin_esq[4], tamBolha, tamBolha),(v_col_esq[4],v_lin_esq[4], tamBolha, tamBolha), 
+	(v_col_esq[0],v_lin_esq[5], tamBolha, tamBolha),(v_col_esq[1], v_lin_esq[5], tamBolha, tamBolha),(v_col_esq[2], v_lin_esq[5], tamBolha, tamBolha),(v_col_esq[3],v_lin_esq[5], tamBolha, tamBolha),(v_col_esq[4],v_lin_esq[5], tamBolha, tamBolha),
+	(v_col_esq[0],v_lin_esq[6], tamBolha, tamBolha),(v_col_esq[1], v_lin_esq[6], tamBolha, tamBolha),(v_col_esq[2], v_lin_esq[6], tamBolha, tamBolha),(v_col_esq[3],v_lin_esq[6], tamBolha, tamBolha),(v_col_esq[4],v_lin_esq[6], tamBolha, tamBolha), 
+	(v_col_esq[0],v_lin_esq[7], tamBolha, tamBolha),(v_col_esq[1], v_lin_esq[7], tamBolha, tamBolha),(v_col_esq[2], v_lin_esq[7], tamBolha, tamBolha),(v_col_esq[3],v_lin_esq[7], tamBolha, tamBolha),(v_col_esq[4],v_lin_esq[7], tamBolha, tamBolha), 
+	(v_col_esq[0],v_lin_esq[8], tamBolha, tamBolha),(v_col_esq[1], v_lin_esq[8], tamBolha, tamBolha),(v_col_esq[2], v_lin_esq[8], tamBolha, tamBolha),(v_col_esq[3],v_lin_esq[8], tamBolha, tamBolha),(v_col_esq[4],v_lin_esq[8], tamBolha, tamBolha), 
+	(v_col_esq[0],v_lin_esq[9], tamBolha, tamBolha),(v_col_esq[1], v_lin_esq[9], tamBolha, tamBolha),(v_col_esq[2], v_lin_esq[9], tamBolha, tamBolha),(v_col_esq[3],v_lin_esq[9], tamBolha, tamBolha),(v_col_esq[4],v_lin_esq[9], tamBolha, tamBolha)
 ]
 
 
 # lista da coordenadas bolhas  da coluna da direita
-
+v_col_dir = [262, 286, 311, 336, 360]
+v_lin_dir = [22, 46, 72, 97, 124, 149, 174, 200, 227, 251]
 bolhas_direita = [
     (262, 22, 20, 20),  (286, 22, 21, 20),  (311, 22, 20, 20),  (336, 22, 20, 20),  (360, 22, 20, 20),
     (262, 46, 20, 20),  (286, 46, 21, 20),  (311, 46, 21, 20),  (336, 46, 20, 20),  (360, 46, 20, 20),
@@ -172,7 +176,7 @@ imagem_recombinada[y_inicio:y_fim, x_inicio:x_fim] = imagem_saida
 
 cv2.imshow('Imagem Recombinada', imagem_recombinada)
 
-cv2.imshow('imagem', imagem_original)
+# cv2.imshow('imagem', imagem_original)
 # cv2.imshow('Bolhas Detectadas', imagem_saida)
 cv2.waitKey(0)
 cv2.destroyAllWindows()

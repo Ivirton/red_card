@@ -1,0 +1,38 @@
+
+-- Tabela: Escola
+CREATE TABLE Escola (
+    id_escola INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT,
+    inep TEXT UNIQUE,
+    area TEXT CHECK(area IN ('Sede', 'Campo')) NOT NULL
+);
+
+-- Tabela: Professor
+CREATE TABLE Professor (
+    id_professor INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    id_escola INTEGER NOT NULL,
+    FOREIGN KEY (id_escola) REFERENCES Escola(id_escola) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- Tabela: Responsavel
+CREATE TABLE Responsavel (
+    id_responsavel INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT,
+    id_escola INTEGER NOT NULL,
+    FOREIGN KEY (id_escola) REFERENCES Escola(id_escola) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- Tabela: Aluno
+CREATE TABLE Aluno (
+    id_aluno INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    codigo TEXT,
+    nivel_prova TEXT CHECK(nivel_prova IN ('Alfa', 'Beta')) NOT NULL,
+    necessidade_especial TEXT CHECK(necessidade_especial IN ('Sim', 'Não')) DEFAULT 'Não',
+    descricao_necessidade TEXT,
+    id_escola INTEGER NOT NULL,
+    FOREIGN KEY (id_escola) REFERENCES Escola(id_escola) ON DELETE CASCADE ON UPDATE CASCADE
+);
