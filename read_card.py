@@ -2,16 +2,15 @@ import cv2
 import numpy as np
 
 # 1. Carrega e redimensiona a imagem
-todasbolhas = 'imagens_pdf/todasbolhas.png'
-pagina1 = 'imagens_pdf/pagina_1.png'
-pagina_1_erro1 = 'imagens_pdf/pagina_1_erro1.png'
-marcacao = 'imagens_pdf/marcacao_.png'
+
+pagina1 = 'imagens_pdf/temp/pagina_1.png'
+
 
 gabarito_correto = [
     'C', 'D', 'C', 'D', 'C','D', 'A', 'B', 'E', 'C',
     'B', 'C', 'D', 'C', 'D','E', 'C', 'C', 'B', 'A'
 ]
-imagem = cv2.imread(pagina_1_erro1)
+imagem = cv2.imread(pagina1)
 if imagem is None:
     raise ValueError("Imagem não encontrada!")
 

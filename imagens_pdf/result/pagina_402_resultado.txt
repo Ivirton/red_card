@@ -1,0 +1,143 @@
+Arquivo: imagens_pdf/temp\pagina_402.png
+Resumo: ['Acertos: 19/20', 'Anuladas: 0', 'Em branco: 0']
+
+Q1 (esq): decision=A reason=top 0.891 ok (2º 0.239)
+   A: fill=0.891 mean_gray=23.9
+   B: fill=0.239 mean_gray=189.6
+   C: fill=0.162 mean_gray=194.1
+   D: fill=0.210 mean_gray=192.5
+   E: fill=0.218 mean_gray=191.6
+
+Q2 (esq): decision=B reason=top 0.894 ok (2º 0.225)
+   A: fill=0.188 mean_gray=211.5
+   B: fill=0.894 mean_gray=25.2
+   C: fill=0.167 mean_gray=212.8
+   D: fill=0.225 mean_gray=210.5
+   E: fill=0.220 mean_gray=210.6
+
+Q3 (esq): decision=D reason=top 0.743 ok (2º 0.260)
+   A: fill=0.220 mean_gray=212.0
+   B: fill=0.260 mean_gray=207.8
+   C: fill=0.127 mean_gray=211.6
+   D: fill=0.743 mean_gray=56.9
+   E: fill=0.225 mean_gray=208.8
+
+Q4 (esq): decision=D reason=top 0.729 ok (2º 0.265)
+   A: fill=0.218 mean_gray=212.2
+   B: fill=0.265 mean_gray=208.7
+   C: fill=0.186 mean_gray=213.4
+   D: fill=0.729 mean_gray=61.5
+   E: fill=0.244 mean_gray=210.8
+
+Q5 (esq): decision=D reason=top 0.729 ok (2º 0.172)
+   A: fill=0.167 mean_gray=200.0
+   B: fill=0.170 mean_gray=196.3
+   C: fill=0.090 mean_gray=199.9
+   D: fill=0.729 mean_gray=62.1
+   E: fill=0.172 mean_gray=196.5
+
+Q6 (esq): decision=B reason=top 0.719 ok (2º 0.241)
+   A: fill=0.223 mean_gray=216.1
+   B: fill=0.719 mean_gray=69.1
+   C: fill=0.202 mean_gray=216.0
+   D: fill=0.233 mean_gray=213.7
+   E: fill=0.241 mean_gray=213.4
+
+Q7 (esq): decision=D reason=top 0.756 ok (2º 0.143)
+   A: fill=0.138 mean_gray=195.2
+   B: fill=0.143 mean_gray=192.4
+   C: fill=0.066 mean_gray=195.0
+   D: fill=0.756 mean_gray=55.6
+   E: fill=0.130 mean_gray=191.2
+
+Q8 (esq): decision=C reason=top 0.782 ok (2º 0.284)
+   A: fill=0.244 mean_gray=211.0
+   B: fill=0.284 mean_gray=206.6
+   C: fill=0.782 mean_gray=55.7
+   D: fill=0.268 mean_gray=209.6
+   E: fill=0.260 mean_gray=209.3
+
+Q9 (esq): decision=D reason=top 0.745 ok (2º 0.138)
+   A: fill=0.138 mean_gray=195.5
+   B: fill=0.122 mean_gray=193.1
+   C: fill=0.074 mean_gray=195.2
+   D: fill=0.745 mean_gray=54.8
+   E: fill=0.103 mean_gray=191.4
+
+Q10 (esq): decision=C reason=top 0.785 ok (2º 0.244)
+   A: fill=0.196 mean_gray=212.7
+   B: fill=0.236 mean_gray=208.7
+   C: fill=0.785 mean_gray=55.3
+   D: fill=0.244 mean_gray=211.9
+   E: fill=0.236 mean_gray=211.2
+
+Q11 (dir): decision=D reason=top 0.767 ok (2º 0.265)
+   A: fill=0.196 mean_gray=214.6
+   B: fill=0.265 mean_gray=210.0
+   C: fill=0.170 mean_gray=213.9
+   D: fill=0.767 mean_gray=59.8
+   E: fill=0.199 mean_gray=209.4
+
+Q12 (dir): decision=C reason=top 0.769 ok (2º 0.249)
+   A: fill=0.159 mean_gray=211.8
+   B: fill=0.233 mean_gray=205.5
+   C: fill=0.769 mean_gray=58.4
+   D: fill=0.180 mean_gray=205.3
+   E: fill=0.249 mean_gray=208.6
+
+Q13 (dir): decision=C reason=top 0.711 ok (2º 0.218)
+   A: fill=0.130 mean_gray=193.0
+   B: fill=0.218 mean_gray=187.8
+   C: fill=0.711 mean_gray=58.0
+   D: fill=0.180 mean_gray=187.6
+   E: fill=0.199 mean_gray=190.0
+
+Q14 (dir): decision=C reason=top 0.695 ok (2º 0.294)
+   A: fill=0.212 mean_gray=209.1
+   B: fill=0.294 mean_gray=202.7
+   C: fill=0.695 mean_gray=65.0
+   D: fill=0.268 mean_gray=202.6
+   E: fill=0.225 mean_gray=204.7
+
+Q15 (dir): decision=B reason=top 0.682 ok (2º 0.191)
+   A: fill=0.154 mean_gray=194.6
+   B: fill=0.682 mean_gray=64.7
+   C: fill=0.143 mean_gray=194.2
+   D: fill=0.180 mean_gray=189.1
+   E: fill=0.191 mean_gray=191.4
+
+Q16 (dir): decision=B reason=top 0.700 ok (2º 0.297)
+   A: fill=0.159 mean_gray=210.6
+   B: fill=0.700 mean_gray=65.6
+   C: fill=0.231 mean_gray=211.5
+   D: fill=0.218 mean_gray=204.3
+   E: fill=0.297 mean_gray=206.9
+
+Q17 (dir): decision=B reason=top 0.716 ok (2º 0.188)
+   A: fill=0.164 mean_gray=209.8
+   B: fill=0.716 mean_gray=60.9
+   C: fill=0.183 mean_gray=211.2
+   D: fill=0.188 mean_gray=202.7
+   E: fill=0.186 mean_gray=205.2
+
+Q18 (dir): decision=B reason=top 0.716 ok (2º 0.191)
+   A: fill=0.159 mean_gray=213.1
+   B: fill=0.716 mean_gray=65.5
+   C: fill=0.143 mean_gray=213.1
+   D: fill=0.180 mean_gray=207.0
+   E: fill=0.191 mean_gray=209.8
+
+Q19 (dir): decision=A reason=top 0.737 ok (2º 0.276)
+   A: fill=0.737 mean_gray=67.1
+   B: fill=0.276 mean_gray=211.9
+   C: fill=0.225 mean_gray=214.1
+   D: fill=0.241 mean_gray=210.6
+   E: fill=0.255 mean_gray=212.0
+
+Q20 (dir): decision=A reason=top 0.753 ok (2º 0.215)
+   A: fill=0.753 mean_gray=59.4
+   B: fill=0.215 mean_gray=205.4
+   C: fill=0.159 mean_gray=213.2
+   D: fill=0.186 mean_gray=206.0
+   E: fill=0.202 mean_gray=208.1
+
