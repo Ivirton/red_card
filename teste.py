@@ -8,6 +8,7 @@ import json
 import cv2
 import numpy as np
 import fitz  # PyMuPDF
+import concurrent.futures
 
 from PyQt6.QtCore import Qt, QRect
 from PyQt6.QtGui import QPixmap, QImage, QPainter, QPen, QAction, QColor
@@ -15,7 +16,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QFileDialog,
     QMessageBox, QWidget, QVBoxLayout, QLabel, QComboBox,
     QScrollArea, QFormLayout, QDialog, QDialogButtonBox,
-    QProgressDialog, QHBoxLayout, QSpinBox, QGroupBox
+    QProgressDialog, QHBoxLayout, QSpinBox, QGroupBox, QInputDialog
 )
 
 # =============================
@@ -54,10 +55,12 @@ def imread_unicode(path):
     except Exception:
         return cv2.imread(path)
 
+
 def salvar_gabarito(gabarito, arquivo=ARQUIVO_GABARITO):
     os.makedirs(os.path.dirname(arquivo) or ".", exist_ok=True)
     with open(arquivo, "w", encoding="utf-8") as f:
         f.write(",".join(gabarito))
+
 
 def carregar_gabarito(arquivo=ARQUIVO_GABARITO):
     if os.path.exists(arquivo):
@@ -67,6 +70,7 @@ def carregar_gabarito(arquivo=ARQUIVO_GABARITO):
                 return txt.split(",")
     # fallback
     return GABARITO_CORRETO.copy()
+
 
 def default_bolhas_layout():
     """Gera layout padrão (mesmo usado anteriormente). Retorna (esq_list, dir_list)."""
@@ -81,6 +85,7 @@ def default_bolhas_layout():
     bolhas_dir = [(x, y, larguras_dir.get((x, y), 20), 20) for y in v_lin_dir for x in v_col_dir]
     return bolhas_esq, bolhas_dir
 
+
 def salvar_bolhas(bolhas_esq, bolhas_dir, arquivo=ARQUIVO_BOLHAS):
     os.makedirs(os.path.dirname(arquivo) or ".", exist_ok=True)
     with open(arquivo, "w", encoding="utf-8") as f:
@@ -88,6 +93,7 @@ def salvar_bolhas(bolhas_esq, bolhas_dir, arquivo=ARQUIVO_BOLHAS):
             f.write(f"E,{x},{y},{w},{h}\n")
         for (x, y, w, h) in bolhas_dir:
             f.write(f"D,{x},{y},{w},{h}\n")
+
 
 def carregar_bolhas(arquivo=ARQUIVO_BOLHAS):
     """Lê o arquivo bolhas.txt no formato E,x,y,w,h / D,x,y,w,h.
@@ -115,11 +121,13 @@ def carregar_bolhas(arquivo=ARQUIVO_BOLHAS):
         return default_bolhas_layout()
     return esq, dir_
 
+
 def cvimg_to_qpixmap(img_bgr):
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     h, w, ch = img_rgb.shape
     qimg = QImage(img_rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
     return QPixmap.fromImage(qimg)
+
 
 # =============================
 # DETECÇÃO E DECISÃO (por ROI)
@@ -154,6 +162,24 @@ def calc_fill_ratio(gray_area, x, y, w, h, expand=ROI_EXPAND):
     fill_ratio = (filled / total_mask) if total_mask > 0 else 0.0
     mean_gray = float(cv2.mean(roi, mask=mask)[0]) if total_mask > 0 else 255.0
     return float(fill_ratio), mean_gray
+
+
+# =============================
+# RENDERER PARA PROCESSOS (picklable)
+# =============================
+def _render_page_to_png(task):
+    """Worker picklable: task = (pdf_path, page_index, dpi, out_path)"""
+    pdf_path, page_index, dpi, out_path = task
+    try:
+        doc = fitz.open(pdf_path)
+        page = doc.load_page(page_index)
+        pix = page.get_pixmap(dpi=dpi)
+        pix.save(out_path)
+        doc.close()
+        return (page_index, out_path, None)
+    except Exception as e:
+        return (page_index, None, str(e))
+
 
 # =============================
 # PROCESSAMENTO DE UM CARTÃO (IMAGEM) COMPLETO
@@ -314,6 +340,7 @@ def processar_cartao(caminho_imagem, gabarito, pasta_saida=PASTA_RESULT):
         print(f"Salvo: {caminho_saida}  (log: {resultado_txt})")
     return caminho_saida
 
+
 # =============================
 # FUNÇÕES PARA PROCESSAMENTO EM LOTE E GERAR PDF FINAL
 # =============================
@@ -331,19 +358,79 @@ def processar_todas_as_imagens(gabarito, progress_cb=None):
             progress_cb(idx, total)
     return imagens_corrigidas
 
-def converter_pdf_para_imagens(pdf_path, progress_cb=None):
+
+def converter_pdf_para_imagens(pdf_path, progress_cb=None, workers=None, dpi=300, cancelled=None):
+    """
+    Converte páginas do PDF em imagens em paralelo usando ProcessPoolExecutor.
+    - pdf_path: caminho do PDF
+    - progress_cb(atual, total): callback para atualizar UI
+    - workers: número de processos (None -> os.cpu_count()-1)
+    - cancelled: dicionário {"flag": False} que, se True, interrompe o processo.
+    """
     os.makedirs(PASTA_TEMP, exist_ok=True)
-    pdf = fitz.open(pdf_path)
-    total = len(pdf)
+
+    # Abre para descobrir número de páginas
+    try:
+        doc = fitz.open(pdf_path)
+        total = len(doc)
+        doc.close()
+    except Exception as e:
+        raise RuntimeError(f"Erro ao abrir PDF: {e}")
+
+    if total == 0:
+        return True
+
+    if workers is None:
+        cpu = os.cpu_count() or 1
+        # normalmente deixamos 1 núcleo livre para o sistema/GUI
+        workers = max(1, cpu - 1)
+
+    tasks = []
     for i in range(total):
-        pagina = pdf.load_page(i)
-        pix = pagina.get_pixmap(dpi=300)
         img_path = os.path.join(PASTA_TEMP, f"pagina_{i+1}.png")
-        pix.save(img_path)
-        if progress_cb:
-            progress_cb(i+1, total)
-    pdf.close()
-    return True
+        tasks.append((pdf_path, i, dpi, img_path))
+
+    # Execução paralela
+    try:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
+            future_to_index = {executor.submit(_render_page_to_png, t): t[1] for t in tasks}
+            completed = 0
+            for fut in concurrent.futures.as_completed(future_to_index):
+                if cancelled and cancelled.get("flag"):
+                    # tenta cancelar futuros pendentes
+                    try:
+                        executor.shutdown(wait=False, cancel_futures=True)
+                    except Exception:
+                        pass
+                    break
+                res = fut.result()
+                completed += 1
+                # res = (page_index, out_path, error_str_or_None)
+                page_index, out_path, err = res
+                if err:
+                    print(f"Erro na página {page_index+1}: {err}")
+                if progress_cb:
+                    progress_cb(completed, total)
+        return True
+    except Exception as e:
+        # fallback sequencial caso o paralelismo falhe
+        print("Falha no paralelismo, revertendo para conversão sequencial:", e)
+        try:
+            doc = fitz.open(pdf_path)
+            for i in range(len(doc)):
+                if cancelled and cancelled.get("flag"):
+                    break
+                pagina = doc.load_page(i)
+                pix = pagina.get_pixmap(dpi=dpi)
+                img_path = os.path.join(PASTA_TEMP, f"pagina_{i+1}.png")
+                pix.save(img_path)
+                if progress_cb:
+                    progress_cb(i+1, len(doc))
+            doc.close()
+            return True
+        except Exception as e2:
+            raise RuntimeError(f"Conversão sequencial também falhou: {e2}")
+
 
 def gerar_pdf_final(imagens_corrigidas, caminho_saida_pdf, progress_cb=None):
     doc = fitz.open()
@@ -357,14 +444,17 @@ def gerar_pdf_final(imagens_corrigidas, caminho_saida_pdf, progress_cb=None):
     doc.save(caminho_saida_pdf)
     doc.close()
 
+
 def limpar_pastas():
     if os.path.exists(PASTA_TEMP):
         shutil.rmtree(PASTA_TEMP, ignore_errors=True)
     if os.path.exists(PASTA_RESULT):
         shutil.rmtree(PASTA_RESULT, ignore_errors=True)
 
+
 # =============================
 # EDITOR VISUAL DE BOLHAS
+# (mantive igual ao que você já tinha)
 # =============================
 class BubbleEditorDialog(QDialog):
     def __init__(self, parent=None):
@@ -513,6 +603,7 @@ class BubbleEditorDialog(QDialog):
         salvar_bolhas(self.bolhas_esq, self.bolhas_dir)
         QMessageBox.information(self, "Salvo", f"Coordenadas gravadas em '{ARQUIVO_BOLHAS}'.")
 
+
 # =============================
 # DIALOG PARA EDITAR GABARITO
 # =============================
@@ -542,8 +633,10 @@ class GabaritoDialog(QDialog):
         botoes.accepted.connect(self.accept)
         botoes.rejected.connect(self.reject)
         layout.addWidget(botoes)
+
     def get_gabarito(self):
         return [cb.currentText() for cb in self.combo_boxes]
+
 
 # =============================
 # MAIN WINDOW (PyQt6)
@@ -625,13 +718,28 @@ class MainWindow(QMainWindow):
         if not self.pdf_path:
             QMessageBox.warning(self, "Erro", "Selecione um PDF primeiro.")
             return
+
+        # Pergunta ao usuário quantos workers usar (opcional) - sugerimos cpu_count-1 por padrão
+        cpu = os.cpu_count() or 1
+        default_workers = max(1, cpu - 1)
+        n, ok = QInputDialog.getInt(self, "Número de processos",
+                                     f"Informe o número de processos (recomendado {default_workers}):",
+                                     value=default_workers, min=1, max=max(1, cpu))
+        if not ok:
+            n = default_workers
+
         limpar_pastas()
+
         def worker(cb, cancelled):
             def progress_cb(i, total):
                 if cancelled["flag"]:
                     return
                 cb(i, total)
-            converter_pdf_para_imagens(self.pdf_path, progress_cb)
+            try:
+                converter_pdf_para_imagens(self.pdf_path, progress_cb, workers=n, cancelled=cancelled)
+            except Exception as e:
+                QMessageBox.critical(self, "Erro na conversão", f"Falha ao converter PDF: {e}")
+
         self._run_with_progress("Convertendo PDF para imagens (TEMP)...", 1, worker)
         QMessageBox.information(self, "Sucesso", "PDF convertido para imagens.")
 
