@@ -3,11 +3,10 @@ import sys
 import os
 import shutil
 import time
-import math
 import json
 import cv2
 import numpy as np
-import fitz  # PyMuPDF
+import fitz
 import concurrent.futures
 
 from PyQt6.QtCore import Qt, QRect
@@ -19,29 +18,36 @@ from PyQt6.QtWidgets import (
     QProgressDialog, QHBoxLayout, QSpinBox, QGroupBox, QInputDialog
 )
 
-# =============================
-# CONFIGURAÇÕES GLOBAIS
-# =============================
+# ======================================
+# CONFIGURAÇÕES GLOBAIS / PARÂMETROS
+# ======================================
+
 PASTA_TEMP = "imagens_pdf/temp"
 PASTA_RESULT = "imagens_pdf/result"
 ARQUIVO_GABARITO = "gabarito.txt"
-ARQUIVO_BOLHAS = "bolhas.txt"  # formato: linhas "E,x,y,w,h" e "D,x,y,w,h"
+ARQUIVO_BOLHAS = "bolhas.txt"  # layout global
+ARQUIVO_RESULTADOS_JSON = os.path.join(PASTA_RESULT, "resultados.json")
 
 # Área de recorte da região das respostas (ajuste se necessário)
 CROP = dict(y_inicio=350, y_fim=700, x_inicio=140, x_fim=540)
 
 # Gabarito padrão (20 questões)
 GABARITO_CORRETO = [
-    'A', 'C', 'C', 'D', 'C','D', 'A', 'B', 'E', 'C',
-    'B', 'C', 'D', 'C', 'D','E', 'C', 'C', 'B', 'A'
+    'A', 'C', 'C', 'D', 'C', 'D', 'A', 'B', 'E', 'C',
+    'B', 'C', 'D', 'C', 'D', 'E', 'C', 'C', 'B', 'A'
 ]
 
-# Parâmetros de decisão (ajuste se necessário)
-FILL_MIN = 0.18      # mínimo absoluto para considerar uma bolha realmente preenchida
-DIFF_MIN = 0.12      # diferença entre top e 2º para aceitar top (evita empates/fraco)
-ROI_EXPAND = 2       # expandir ROI em px para capturar marcações fora do miolo
+# Parâmetros de decisão
+FILL_MIN = 0.18      # mínimo para considerar bolha preenchida
+DIFF_MIN = 0.12      # diferença entre top e 2º para aceitar top
+ROI_EXPAND = 2       # px ao redor do ROI
 MORPH_KERNEL = (3, 3)
-DEBUG_LOG = False    # True para ver logs detalhados no terminal
+DEBUG_LOG = False
+
+# Overlays
+DESENHAR_GRADE_TODAS_BOLHAS = True         # desenha todos os “quadradinhos/grades” por cima
+COR_GRADE = (0, 200, 255)                  # cor da grade das alternativas (BGR)
+ESPESSURA_GRADE = 1                        # espessura linha grade
 
 # =============================
 # UTILITÁRIOS (I/O & leitura)
@@ -68,12 +74,11 @@ def carregar_gabarito(arquivo=ARQUIVO_GABARITO):
             txt = f.read().strip()
             if txt:
                 return txt.split(",")
-    # fallback
     return GABARITO_CORRETO.copy()
 
 
 def default_bolhas_layout():
-    """Gera layout padrão (mesmo usado anteriormente). Retorna (esq_list, dir_list)."""
+    """Gera layout padrão (50 esq + 50 dir). Retorna (esq_list, dir_list)."""
     v_col_esq = [79, 101, 125, 150, 174]
     v_lin_esq = [21, 48, 74, 99, 126, 151, 176, 200, 227, 251]
     tam = 20
@@ -86,9 +91,12 @@ def default_bolhas_layout():
     return bolhas_esq, bolhas_dir
 
 
-def salvar_bolhas(bolhas_esq, bolhas_dir, arquivo=ARQUIVO_BOLHAS):
+def salvar_bolhas(bolhas_esq, bolhas_dir, arquivo=ARQUIVO_BOLHAS, lock=False):
+    """Salva EM ARQUIVO informado (global ou por imagem). Se lock=True, escreve cabeçalho #LOCK=1."""
     os.makedirs(os.path.dirname(arquivo) or ".", exist_ok=True)
     with open(arquivo, "w", encoding="utf-8") as f:
+        if lock:
+            f.write("#LOCK=1\n")
         for (x, y, w, h) in bolhas_esq:
             f.write(f"E,{x},{y},{w},{h}\n")
         for (x, y, w, h) in bolhas_dir:
@@ -96,15 +104,16 @@ def salvar_bolhas(bolhas_esq, bolhas_dir, arquivo=ARQUIVO_BOLHAS):
 
 
 def carregar_bolhas(arquivo=ARQUIVO_BOLHAS):
-    """Lê o arquivo bolhas.txt no formato E,x,y,w,h / D,x,y,w,h.
-       Se faltar ou inválido, retorna layout padrão.
-    """
+    """Lê arquivo de bolhas no formato E,x,y,w,h / D,x,y,w,h, ignora linhas iniciadas por #."""
     if not os.path.exists(arquivo):
         return default_bolhas_layout()
     esq, dir_ = [], []
     with open(arquivo, "r", encoding="utf-8") as f:
         for line in f:
-            parts = line.strip().split(",")
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split(",")
             if len(parts) != 5:
                 continue
             lado, x, y, w, h = parts
@@ -116,10 +125,95 @@ def carregar_bolhas(arquivo=ARQUIVO_BOLHAS):
                 esq.append(tpl)
             elif lado.upper() == "D":
                 dir_.append(tpl)
-    # checa integridade
     if len(esq) != 50 or len(dir_) != 50:
         return default_bolhas_layout()
     return esq, dir_
+
+
+def arquivo_tem_lock(arquivo):
+    """Retorna True se o arquivo possui cabeçalho #LOCK=1."""
+    if not os.path.exists(arquivo):
+        return False
+    try:
+        with open(arquivo, "r", encoding="utf-8") as f:
+            for i, line in enumerate(f):
+                if i > 3:
+                    break
+                if line.strip().upper() == "#LOCK=1":
+                    return True
+    except Exception:
+        pass
+    return False
+
+
+def caminho_arquivo_bolhas_da_imagem(img_path):
+    """Retorna o caminho do arquivo de bolhas específico para a imagem/página."""
+    base = os.path.splitext(os.path.basename(img_path))[0]
+    return os.path.join(PASTA_TEMP, f"{base}_bolhas.txt")
+
+
+def carregar_bolhas_da_imagem(img_path, usar_fallback_global=True):
+    """Carrega bolhas específicas da imagem; fallback para global e padrão. (ignora #LOCK na leitura)"""
+    arq_pagina = caminho_arquivo_bolhas_da_imagem(img_path)
+    if os.path.exists(arq_pagina):
+        return carregar_bolhas(arq_pagina)
+    if usar_fallback_global and os.path.exists(ARQUIVO_BOLHAS):
+        return carregar_bolhas(ARQUIVO_BOLHAS)
+    return default_bolhas_layout()
+
+
+def pagina_bloqueada_por_usuario(img_path):
+    """True se o _bolhas.txt da página tiver #LOCK=1 (salvo pelo editor)."""
+    arq_pagina = caminho_arquivo_bolhas_da_imagem(img_path)
+    return arquivo_tem_lock(arq_pagina)
+
+
+def salvar_bolhas_da_imagem(bolhas_esq, bolhas_dir, img_path, lock=True):
+    """Salva as bolhas específicas daquela imagem/página. lock=True para marcar que o usuário travou."""
+    arq_pagina = caminho_arquivo_bolhas_da_imagem(img_path)
+    salvar_bolhas(bolhas_esq, bolhas_dir, arq_pagina, lock=lock)
+    return arq_pagina
+
+
+def inicializar_bolhas_para_todas_as_imagens():
+    """
+    Cria (se não existirem) arquivos _bolhas.txt individuais, com layout padrão,
+    para cada imagem presente em PASTA_TEMP (sem LOCK por padrão).
+    """
+    if not os.path.exists(PASTA_TEMP):
+        return 0
+    arquivos = sorted(
+        [a for a in os.listdir(PASTA_TEMP) if a.lower().endswith((".png", ".jpg", ".jpeg"))]
+    )
+    bolhas_esq_default, bolhas_dir_default = default_bolhas_layout()
+    criados = 0
+    for nome in arquivos:
+        img_path = os.path.join(PASTA_TEMP, nome)
+        arq_pag = caminho_arquivo_bolhas_da_imagem(img_path)
+        if not os.path.exists(arq_pag):
+            salvar_bolhas(bolhas_esq_default, bolhas_dir_default, arq_pag, lock=False)
+            criados += 1
+    return criados
+
+
+def aplicar_layout_a_todas_as_imagens(bolhas_esq, bolhas_dir):
+    """
+    Sobrescreve o *_bolhas.txt de TODAS as páginas com o layout fornecido
+    e também salva como padrão global (ARQUIVO_BOLHAS). (aplica SEM lock)
+    """
+    salvar_bolhas(bolhas_esq, bolhas_dir, ARQUIVO_BOLHAS, lock=False)
+    if not os.path.exists(PASTA_TEMP):
+        return 0
+    arquivos = sorted(
+        [a for a in os.listdir(PASTA_TEMP) if a.lower().endswith((".png", ".jpg", ".jpeg"))]
+    )
+    alterados = 0
+    for nome in arquivos:
+        img_path = os.path.join(PASTA_TEMP, nome)
+        arq_pag = caminho_arquivo_bolhas_da_imagem(img_path)
+        salvar_bolhas(bolhas_esq, bolhas_dir, arq_pag, lock=False)
+        alterados += 1
+    return alterados
 
 
 def cvimg_to_qpixmap(img_bgr):
@@ -130,7 +224,7 @@ def cvimg_to_qpixmap(img_bgr):
 
 
 # =============================
-# DETECÇÃO E DECISÃO (por ROI)
+# DETECÇÃO / ALINHAMENTO
 # =============================
 def calc_fill_ratio(gray_area, x, y, w, h, expand=ROI_EXPAND):
     """Calcula fill ratio dentro do ROI expandido, aplicando Otsu + morph + máscara circular."""
@@ -141,7 +235,7 @@ def calc_fill_ratio(gray_area, x, y, w, h, expand=ROI_EXPAND):
     yb = min(H, int(y + h + expand))
     roi = gray_area[ya:yb, xa:xb]
     if roi.size == 0 or roi.shape[0] < 3 or roi.shape[1] < 3:
-        return 0.0, 255.0  # nada
+        return 0.0, 255.0
 
     blur = cv2.GaussianBlur(roi, (3, 3), 0)
     _, th = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
@@ -151,9 +245,8 @@ def calc_fill_ratio(gray_area, x, y, w, h, expand=ROI_EXPAND):
 
     rh, rw = th.shape[:2]
     mask = np.zeros((rh, rw), dtype=np.uint8)
-    # máscara circular central
     center = (rw // 2, rh // 2)
-    radius = max(1, min(rw, rh) // 2 - 1)
+    radius = max(3, min(rw, rh) // 2 - 1)
     cv2.circle(mask, center, radius, 255, -1)
 
     masked = cv2.bitwise_and(th, th, mask=mask)
@@ -162,6 +255,119 @@ def calc_fill_ratio(gray_area, x, y, w, h, expand=ROI_EXPAND):
     fill_ratio = (filled / total_mask) if total_mask > 0 else 0.0
     mean_gray = float(cv2.mean(roi, mask=mask)[0]) if total_mask > 0 else 255.0
     return float(fill_ratio), mean_gray
+
+
+def _render_mask_from_bolhas(size_hw, bolhas_esq, bolhas_dir):
+    """Gera uma máscara sintética (float32) com círculos nas posições das bolhas para alinhamento."""
+    H, W = size_hw
+    mask = np.zeros((H, W), dtype=np.uint8)
+
+    def draw_group(lst):
+        for (x, y, w, h) in lst:
+            cx, cy = int(x + w / 2), int(y + h / 2)
+            r = max(3, int(min(w, h) * 0.45))
+            cv2.circle(mask, (cx, cy), r, 255, -1)
+
+    draw_group(bolhas_esq)
+    draw_group(bolhas_dir)
+    # Desfoca um pouco para facilitar ECC
+    mask = cv2.GaussianBlur(mask, (5, 5), 0)
+    return mask.astype(np.float32) / 255.0
+
+
+def _preprocess_for_ecc(gray_area):
+    """Pré-processa a área real para ECC: binariza e normaliza como float32 0..1."""
+    blur = cv2.GaussianBlur(gray_area, (5, 5), 0)
+    _, th = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    th = cv2.GaussianBlur(th, (5, 5), 0)
+    return th.astype(np.float32) / 255.0
+
+
+def _transform_points(bolhas, M, motion=cv2.MOTION_AFFINE):
+    """Aplica transformação (warp) nos centros e mantém tamanho original."""
+    out = []
+    A = M[:, :2]
+    b = M[:, 2].reshape(2, 1)
+    for (x, y, w, h) in bolhas:
+        p = np.array([[x + w / 2.0], [y + h / 2.0]], dtype=np.float32)
+        p2 = A @ p + b
+        cx, cy = float(p2[0, 0]), float(p2[1, 0])
+        out.append((int(round(cx - w / 2.0)), int(round(cy - h / 2.0)), w, h))
+    return out
+
+
+def auto_reposicionar_bolhas(gray_area, bolhas_esq, bolhas_dir):
+    """
+    Realinha automaticamente as bolhas à imagem usando ECC (MOTION_AFFINE).
+    Retorna: (bolhas_esq_alinhadas, bolhas_dir_alinhadas, sucesso_bool)
+    """
+    try:
+        H, W = gray_area.shape[:2]
+        ref = _render_mask_from_bolhas((H, W), bolhas_esq, bolhas_dir)
+        tgt = _preprocess_for_ecc(gray_area)
+
+        # ECC precisa float32, mesmo tamanho
+        ref32 = ref
+        tgt32 = tgt
+
+        # Matriz inicial (identidade)
+        warp = np.eye(2, 3, dtype=np.float32)
+
+        # Critérios e iterações
+        criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 80, 1e-5)
+
+        # Tenta AFFINE (permite rotação + leve escala)
+        cc, warp = cv2.findTransformECC(
+            ref32, tgt32, warp, motionType=cv2.MOTION_AFFINE,
+            criteria=criteria, inputMask=None, gaussFiltSize=5
+        )
+
+        # Aplica transformação às bolhas
+        esq_al = _transform_points(bolhas_esq, warp, motion=cv2.MOTION_AFFINE)
+        dir_al = _transform_points(bolhas_dir, warp, motion=cv2.MOTION_AFFINE)
+        return esq_al, dir_al, True
+    except Exception as e:
+        if DEBUG_LOG:
+            print("Auto-reposicionamento falhou:", e)
+        return bolhas_esq, bolhas_dir, False
+
+
+# =============================
+# QR CODE (leitura)
+# =============================
+def extrair_codigo_qr_da_imagem(img_bgr):
+    """
+    Tenta extrair/decodear QR code do canto superior direito da imagem.
+    Se não encontrar, tenta em toda a imagem.
+    Retorna string com conteúdo do QR ou None.
+    """
+    if img_bgr is None:
+        return None
+    h, w = img_bgr.shape[:2]
+    detector = cv2.QRCodeDetector()
+
+    # tenta recorte no topo-direita (área adaptável)
+    crop_w = min(400, w // 3)   # até ~1/3 da largura ou 400px
+    crop_h = min(400, h // 3)   # até ~1/3 da altura ou 400px
+    x0 = max(0, w - crop_w - 10)
+    y0 = 0
+    crop = img_bgr[y0:y0 + crop_h, x0:x0 + crop_w]
+    try:
+        data, points, _ = detector.detectAndDecode(crop)
+        if data:
+            return data.strip()
+    except Exception:
+        pass
+
+    # se falhar no recorte, tenta na imagem inteira
+    try:
+        data, points, _ = detector.detectAndDecode(img_bgr)
+        if data:
+            return data.strip()
+    except Exception:
+        pass
+
+    return None
 
 
 # =============================
@@ -185,10 +391,13 @@ def _render_page_to_png(task):
 # PROCESSAMENTO DE UM CARTÃO (IMAGEM) COMPLETO
 # =============================
 def processar_cartao(caminho_imagem, gabarito, pasta_saida=PASTA_RESULT):
+    """
+    Processa imagem (corrige, desenha e retorna caminho do resultado e dicionário com resultado para JSON).
+    """
     img = imread_unicode(caminho_imagem)
     if img is None:
         print(f"Erro: não foi possível abrir {caminho_imagem}")
-        return None
+        return None, None
 
     # Redimensiona (para manter comportamento consistente)
     ALT_MAX, LARG_MAX = 1000, 800
@@ -197,31 +406,45 @@ def processar_cartao(caminho_imagem, gabarito, pasta_saida=PASTA_RESULT):
     img_resized = cv2.resize(img, (int(larg * escala), int(alt * escala)))
     imagem_original = img_resized.copy()
 
+    # Tenta ler QR (do aluno) no tamanho redimensionado
+    codigo_qr = extrair_codigo_qr_da_imagem(img_resized)
+    if DEBUG_LOG:
+        print(f"[QR] {caminho_imagem} -> {codigo_qr}")
+
     # Verifica recorte
     y0, y1 = CROP["y_inicio"], CROP["y_fim"]
     x0, x1 = CROP["x_inicio"], CROP["x_fim"]
     H, W = img_resized.shape[:2]
     if y1 > H or x1 > W:
         print(f"Aviso: imagem {caminho_imagem} menor que CROP definido -> ignorada")
-        return None
+        return None, None
 
     area = img_resized[y0:y1, x0:x1]
     gray_area = cv2.cvtColor(area, cv2.COLOR_BGR2GRAY)
 
-    bolhas_esq, bolhas_dir = carregar_bolhas()
+    # Carrega bolhas base (padrão/global/por-página)
+    bolhas_esq_base, bolhas_dir_base = carregar_bolhas_da_imagem(caminho_imagem, usar_fallback_global=True)
 
-    # Calcula fill ratio para todas as bolhas (esq + dir)
+    # Se o usuário editou e SALVOU essa página (arquivo com #LOCK=1), NÃO auto-reposiciona.
+    usar_auto = not pagina_bloqueada_por_usuario(caminho_imagem)
+
+    # Auto-reposicionamento (alinha com AFFINE via ECC)
+    if usar_auto:
+        bolhas_esq, bolhas_dir, ok_auto = auto_reposicionar_bolhas(gray_area, bolhas_esq_base, bolhas_dir_base)
+    else:
+        bolhas_esq, bolhas_dir, ok_auto = bolhas_esq_base, bolhas_dir_base, False
+
+    # Calcula fill ratio
     fill_esq = [calc_fill_ratio(gray_area, x, y, w, h) for (x, y, w, h) in bolhas_esq]
     fill_dir = [calc_fill_ratio(gray_area, x, y, w, h) for (x, y, w, h) in bolhas_dir]
 
-    # Para cada grupo de 5 determinamos decisão
     letras = ['A', 'B', 'C', 'D', 'E']
-    respostas_esq = []
+    respostas_esq, respostas_dir = [], []
     logs = []
 
-    # esquerda: 50 bolhas -> 10 grupos (questões 1..10)
+    # esquerda (1..10)
     for g in range(0, 50, 5):
-        group = fill_esq[g:g+5]  # lista de (fill_ratio, mean_gray)
+        group = fill_esq[g:g+5]
         vals = [v[0] for v in group]
         pairs = list(zip(letras, vals, [v[1] for v in group]))
         sorted_pairs = sorted(enumerate(vals), key=lambda t: t[1], reverse=True)
@@ -229,36 +452,6 @@ def processar_cartao(caminho_imagem, gabarito, pasta_saida=PASTA_RESULT):
         top_fill = vals[top_idx]
         second_fill = sorted_pairs[1][1] if len(sorted_pairs) > 1 else 0.0
 
-        reason = ""
-        decision = None
-        if top_fill < FILL_MIN:
-            decision = "-"  # branco
-            reason = f"top_fill {top_fill:.3f} < FILL_MIN {FILL_MIN}"
-        elif (top_fill - second_fill) < DIFF_MIN:
-            decision = "*"  # anulada/ambígua
-            reason = f"dif {top_fill - second_fill:.3f} < DIFF_MIN {DIFF_MIN}"
-        else:
-            decision = letras[top_idx]
-            reason = f"top {top_fill:.3f} ok (2º {second_fill:.3f})"
-
-        respostas_esq.append(decision)
-        if DEBUG_LOG:
-            print(f"ESQ group {(g//5)+1}: {[(letras[i], vals[i]) for i in range(5)]} -> {decision} ({reason})")
-        logs.append(("esq", (g//5)+1, pairs, decision, reason))
-
-    # direita: 50 bolhas -> 10 grupos (questões 11..20)
-    respostas_dir = []
-    for g in range(0, 50, 5):
-        group = fill_dir[g:g+5]
-        vals = [v[0] for v in group]
-        pairs = list(zip(letras, vals, [v[1] for v in group]))
-        sorted_pairs = sorted(enumerate(vals), key=lambda t: t[1], reverse=True)
-        top_idx = sorted_pairs[0][0]
-        top_fill = vals[top_idx]
-        second_fill = sorted_pairs[1][1] if len(sorted_pairs) > 1 else 0.0
-
-        reason = ""
-        decision = None
         if top_fill < FILL_MIN:
             decision = "-"
             reason = f"top_fill {top_fill:.3f} < FILL_MIN {FILL_MIN}"
@@ -268,92 +461,177 @@ def processar_cartao(caminho_imagem, gabarito, pasta_saida=PASTA_RESULT):
         else:
             decision = letras[top_idx]
             reason = f"top {top_fill:.3f} ok (2º {second_fill:.3f})"
+        respostas_esq.append(decision)
+        logs.append(("esq", (g // 5) + 1, pairs, decision, reason))
 
+    # direita (11..20)
+    for g in range(0, 50, 5):
+        group = fill_dir[g:g+5]
+        vals = [v[0] for v in group]
+        pairs = list(zip(letras, vals, [v[1] for v in group]))
+        sorted_pairs = sorted(enumerate(vals), key=lambda t: t[1], reverse=True)
+        top_idx = sorted_pairs[0][0]
+        top_fill = vals[top_idx]
+        second_fill = sorted_pairs[1][1] if len(sorted_pairs) > 1 else 0.0
+
+        if top_fill < FILL_MIN:
+            decision = "-"
+            reason = f"top_fill {top_fill:.3f} < FILL_MIN {FILL_MIN}"
+        elif (top_fill - second_fill) < DIFF_MIN:
+            decision = "*"
+            reason = f"dif {top_fill - second_fill:.3f} < DIFF_MIN {DIFF_MIN}"
+        else:
+            decision = letras[top_idx]
+            reason = f"top {top_fill:.3f} ok (2º {second_fill:.3f})"
         respostas_dir.append(decision)
-        if DEBUG_LOG:
-            print(f"DIR group {(g//5)+11}: {[(letras[i], vals[i]) for i in range(5)]} -> {decision} ({reason})")
-        logs.append(("dir", (g//5)+11, pairs, decision, reason))
+        logs.append(("dir", (g // 5) + 11, pairs, decision, reason))
 
     respostas_final = respostas_esq + respostas_dir  # 20 respostas
 
-    # compara com gabarito e desenha retângulos (verde se correta, vermelho se errada)
+    # compara com gabarito e desenha
     acertos = anuladas = brancas = 0
     imagem_saida = area.copy()
+
+    # [NOVO] Desenha a grade completa (todas as bolhas), para facilitar validação visual
+    if DESENHAR_GRADE_TODAS_BOLHAS:
+        for (x, y, w, h) in bolhas_esq + bolhas_dir:
+            cv2.rectangle(imagem_saida, (x, y), (x + w, y + h), COR_GRADE, ESPESSURA_GRADE)
+
+    # Prepara dados detalhados por questão para JSON
+    detalhes_questoes = []
     for i, resposta_aluno in enumerate(respostas_final):
         resposta_correta = gabarito[i] if i < len(gabarito) else None
+        status = None
         if resposta_aluno == "*":
             anuladas += 1
-            continue
+            status = "annulled"
         elif resposta_aluno == "-":
             brancas += 1
-            continue
+            status = "blank"
         elif resposta_aluno == resposta_correta:
             acertos += 1
-            cor = (0, 255, 0)
+            status = "correct"
         else:
-            cor = (0, 0, 255)
+            status = "wrong"
 
-        # encontrar coords do grupo e alternativa
-        if i < 10:
-            grupo_idx = i
-            grupo_coords = bolhas_esq[grupo_idx*5:(grupo_idx+1)*5]
-        else:
-            grupo_idx = i - 10
-            grupo_coords = bolhas_dir[grupo_idx*5:(grupo_idx+1)*5]
+        # desenha caixa correta/errada no output visual
+        if status in ("correct", "wrong"):
+            cor = (0, 255, 0) if status == "correct" else (0, 0, 255)
+            if i < 10:
+                grupo_idx = i
+                grupo_coords = bolhas_esq[grupo_idx * 5:(grupo_idx + 1) * 5]
+            else:
+                grupo_idx = i - 10
+                grupo_coords = bolhas_dir[grupo_idx * 5:(grupo_idx + 1) * 5]
+            if resposta_aluno in letras:
+                idx = letras.index(resposta_aluno)
+                if 0 <= idx < len(grupo_coords):
+                    x, y, w, h = grupo_coords[idx]
+                    cv2.rectangle(imagem_saida, (x, y), (x + w, y + h), cor, 2)
 
-        if resposta_aluno in letras:
-            idx = letras.index(resposta_aluno)
-            if 0 <= idx < len(grupo_coords):
-                x, y, w, h = grupo_coords[idx]
-                # desenha
-                cv2.rectangle(imagem_saida, (x, y), (x + w, y + h), cor, 2)
+        detalhes_questoes.append({
+            "questao": i + 1,
+            "resposta_aluno": resposta_aluno,
+            "resposta_correta": resposta_correta,
+            "status": status
+        })
 
-    # recombina a imagem final com a área corrigida
+    respostas_summary = {
+        "acertos": acertos,
+        "anuladas": anuladas,
+        "brancas": brancas,
+        "total_questoes": len(gabarito)
+    }
+
+    # recombina imagem final
     imagem_final = imagem_original.copy()
-    imagem_final[y0:y1, x0:x1] = imagem_saida
+    imagem_final[CROP["y_inicio"]:CROP["y_fim"], CROP["x_inicio"]:CROP["x_fim"]] = imagem_saida
 
-    # escreve resumo no rodapé
-    resumo = [f"Acertos: {acertos}/{len(gabarito)}", f"Anuladas: {anuladas}", f"Em branco: {brancas}"]
-    x_texto, y_texto = 10, imagem_final.shape[0] - 80
+    # escreve resumo (e status do auto)
+    auto_status_text = 'OK' if usar_auto and ok_auto else ('IGNORADO (LOCK)' if not usar_auto else 'FALHOU')
+    resumo = [
+        f"Acertos: {acertos}/{len(gabarito)}",
+        f"Anuladas: {anuladas}",
+        f"Em branco: {brancas}",
+        f"Auto-reposicionamento: {auto_status_text}"
+    ]
+    x_texto, y_texto = 10, imagem_final.shape[0] - 100
     for idx, linha in enumerate(resumo):
-        cv2.putText(imagem_final, linha, (x_texto, y_texto + idx*25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+        cv2.putText(imagem_final, linha, (x_texto, y_texto + idx * 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
 
-    # salva arquivo final e salva log simples por página
+    # salva arquivo final e log
     os.makedirs(pasta_saida, exist_ok=True)
     base, _ = os.path.splitext(os.path.basename(caminho_imagem))
     caminho_saida = os.path.join(pasta_saida, f"{base}_corrigido.png")
     cv2.imwrite(caminho_saida, imagem_final)
 
-    # salva resultado detalhado em txt
     resultado_txt = os.path.join(pasta_saida, f"{base}_resultado.txt")
     with open(resultado_txt, "w", encoding="utf-8") as f:
         f.write(f"Arquivo: {caminho_imagem}\n")
         f.write(f"Resumo: {resumo}\n\n")
         for idx_entry in logs:
             lado, qnum, pairs, decision, reason = idx_entry
-            f.write(f"Q{qnum} ({'esq' if lado=='esq' else 'dir'}): decision={decision} reason={reason}\n")
+            f.write(f"Q{qnum} ({'esq' if lado == 'esq' else 'dir'}): decision={decision} reason={reason}\n")
             for alt, fill, mean_g in pairs:
                 f.write(f"   {alt}: fill={fill:.3f} mean_gray={mean_g:.1f}\n")
             f.write("\n")
 
     if DEBUG_LOG:
         print(f"Salvo: {caminho_saida}  (log: {resultado_txt})")
-    return caminho_saida
+
+    # Monta dicionário para inserir no JSON de resultados
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    entry = {
+        "arquivo_imagem": os.path.basename(caminho_imagem),
+        "timestamp": timestamp,
+        "auto_reposicionamento": auto_status_text,
+        "resumo": respostas_summary,
+        "detalhes": detalhes_questoes
+    }
+
+    # chave: codigo_qr (se disponível) ou nome do arquivo (fallback)
+    chave = codigo_qr if codigo_qr else os.path.splitext(os.path.basename(caminho_imagem))[0]
+    return caminho_saida, (chave, entry)
 
 
 # =============================
-# FUNÇÕES PARA PROCESSAMENTO EM LOTE E GERAR PDF FINAL
+# PROCESSAMENTO EM LOTE E JSON
 # =============================
 def processar_todas_as_imagens(gabarito, progress_cb=None):
+    """
+    Processa todas as imagens em PASTA_TEMP e, além de salvar imagens corrigidas,
+    gera/atualiza um arquivo JSON único em PASTA_RESULT contendo todos os resultados.
+    """
     imagens_corrigidas = []
     os.makedirs(PASTA_RESULT, exist_ok=True)
     arquivos = sorted([a for a in os.listdir(PASTA_TEMP) if a.lower().endswith((".png", ".jpg", ".jpeg"))])
     total = len(arquivos)
+    resultados_geral = {}
+
+    # se existir JSON anterior, tenta carregar para mesclar
+    if os.path.exists(ARQUIVO_RESULTADOS_JSON):
+        try:
+            with open(ARQUIVO_RESULTADOS_JSON, "r", encoding="utf-8") as jf:
+                resultados_geral = json.load(jf)
+        except Exception:
+            resultados_geral = {}
+
     for idx, arquivo in enumerate(arquivos, start=1):
         caminho_img = os.path.join(PASTA_TEMP, arquivo)
-        saida = processar_cartao(caminho_img, gabarito, PASTA_RESULT)
-        if saida:
-            imagens_corrigidas.append(saida)
+        caminho_saida, result_pair = processar_cartao(caminho_img, gabarito, PASTA_RESULT)
+        if caminho_saida:
+            imagens_corrigidas.append(caminho_saida)
+        if result_pair:
+            chave, entry = result_pair
+            # salva/atualiza no dicionário geral
+            resultados_geral[str(chave)] = entry
+            # salva o JSON a cada página processada (persistência incremental)
+            try:
+                with open(ARQUIVO_RESULTADOS_JSON, "w", encoding="utf-8") as jf:
+                    json.dump(resultados_geral, jf, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print("Falha ao salvar JSON de resultados:", e)
+
         if progress_cb:
             progress_cb(idx, total)
     return imagens_corrigidas
@@ -362,14 +640,10 @@ def processar_todas_as_imagens(gabarito, progress_cb=None):
 def converter_pdf_para_imagens(pdf_path, progress_cb=None, workers=None, dpi=300, cancelled=None):
     """
     Converte páginas do PDF em imagens em paralelo usando ProcessPoolExecutor.
-    - pdf_path: caminho do PDF
-    - progress_cb(atual, total): callback para atualizar UI
-    - workers: número de processos (None -> os.cpu_count()-1)
-    - cancelled: dicionário {"flag": False} que, se True, interrompe o processo.
     """
     os.makedirs(PASTA_TEMP, exist_ok=True)
 
-    # Abre para descobrir número de páginas
+    # Descobre número de páginas
     try:
         doc = fitz.open(pdf_path)
         total = len(doc)
@@ -382,7 +656,6 @@ def converter_pdf_para_imagens(pdf_path, progress_cb=None, workers=None, dpi=300
 
     if workers is None:
         cpu = os.cpu_count() or 1
-        # normalmente deixamos 1 núcleo livre para o sistema/GUI
         workers = max(1, cpu - 1)
 
     tasks = []
@@ -390,14 +663,12 @@ def converter_pdf_para_imagens(pdf_path, progress_cb=None, workers=None, dpi=300
         img_path = os.path.join(PASTA_TEMP, f"pagina_{i+1}.png")
         tasks.append((pdf_path, i, dpi, img_path))
 
-    # Execução paralela
     try:
         with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
             future_to_index = {executor.submit(_render_page_to_png, t): t[1] for t in tasks}
             completed = 0
             for fut in concurrent.futures.as_completed(future_to_index):
                 if cancelled and cancelled.get("flag"):
-                    # tenta cancelar futuros pendentes
                     try:
                         executor.shutdown(wait=False, cancel_futures=True)
                     except Exception:
@@ -405,15 +676,17 @@ def converter_pdf_para_imagens(pdf_path, progress_cb=None, workers=None, dpi=300
                     break
                 res = fut.result()
                 completed += 1
-                # res = (page_index, out_path, error_str_or_None)
                 page_index, out_path, err = res
                 if err:
                     print(f"Erro na página {page_index+1}: {err}")
                 if progress_cb:
                     progress_cb(completed, total)
+        criados = inicializar_bolhas_para_todas_as_imagens()
+        if DEBUG_LOG:
+            print(f"Arquivos de bolhas iniciais criados: {criados}")
         return True
     except Exception as e:
-        # fallback sequencial caso o paralelismo falhe
+        # fallback sequencial
         print("Falha no paralelismo, revertendo para conversão sequencial:", e)
         try:
             doc = fitz.open(pdf_path)
@@ -425,8 +698,11 @@ def converter_pdf_para_imagens(pdf_path, progress_cb=None, workers=None, dpi=300
                 img_path = os.path.join(PASTA_TEMP, f"pagina_{i+1}.png")
                 pix.save(img_path)
                 if progress_cb:
-                    progress_cb(i+1, len(doc))
+                    progress_cb(i + 1, len(doc))
             doc.close()
+            criados = inicializar_bolhas_para_todas_as_imagens()
+            if DEBUG_LOG:
+                print(f"Arquivos de bolhas iniciais criados: {criados}")
             return True
         except Exception as e2:
             raise RuntimeError(f"Conversão sequencial também falhou: {e2}")
@@ -453,36 +729,59 @@ def limpar_pastas():
 
 
 # =============================
-# EDITOR VISUAL DE BOLHAS
-# (mantive igual ao que você já tinha)
+# EDITOR VISUAL DE BOLHAS (por página)
 # =============================
 class BubbleEditorDialog(QDialog):
+    """
+    Editor visual para reposicionar bolhas, percorrendo TODAS as imagens da PASTA_TEMP.
+    Para cada imagem salva um arquivo específico: <nome>_bolhas.txt
+    Inclui botão "Salvar como padrão e aplicar em TODAS".
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Reposicionar Bolhas (visual)")
-        self.setMinimumSize(900, 700)
+        self.setWindowTitle("Reposicionar Bolhas (por página)")
+        self.setMinimumSize(1000, 780)
 
-        self.bolhas_esq, self.bolhas_dir = carregar_bolhas()
+        # Lista de imagens na pasta TEMP
+        self.imagens = []
+        if os.path.exists(PASTA_TEMP):
+            self.imagens = sorted([os.path.join(PASTA_TEMP, a) for a in os.listdir(PASTA_TEMP)
+                                   if a.lower().endswith((".png", ".jpg", ".jpeg"))])
+
+        # estado
+        self.idx = 0
+        self.img_path_atual = None
+        self.bolhas_esq, self.bolhas_dir = default_bolhas_layout()
         self.step = 2
         self.preview = None
         self.info_crop_invalido = False
 
         main_layout = QVBoxLayout(self)
-        sel_layout = QHBoxLayout()
-        self.lbl_img_path = QLabel("Nenhuma imagem selecionada.")
-        btn_sel_img = QPushButton("Escolher Imagem (qualquer pasta)")
-        btn_sel_img.clicked.connect(self.escolher_imagem)
-        sel_layout.addWidget(self.lbl_img_path)
-        sel_layout.addWidget(btn_sel_img)
-        main_layout.addLayout(sel_layout)
 
+        # Cabeçalho: info + navegação
+        header = QHBoxLayout()
+        self.lbl_status = QLabel("Sem imagens em TEMP.")
+        header.addWidget(self.lbl_status, stretch=1)
+
+        self.btn_prev = QPushButton("⟵ Anterior")
+        self.btn_prev.clicked.connect(self.anterior_imagem)
+        self.btn_next = QPushButton("Próxima ⟶")
+        self.btn_next.clicked.connect(self.proxima_imagem)
+        header.addWidget(self.btn_prev)
+        header.addWidget(self.btn_next)
+        main_layout.addLayout(header)
+
+        # Preview
         self.lbl_preview = QLabel()
         self.lbl_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_preview.setStyleSheet("background:#eee; border:1px solid #ccc;")
         main_layout.addWidget(self.lbl_preview, stretch=1)
 
+        # Controles
         controls = QHBoxLayout()
-        grp_move = QGroupBox("Mover todas as bolhas")
+
+        # Grupo mover
+        grp_move = QGroupBox("Mover todas as bolhas (página atual)")
         mv = QHBoxLayout()
         self.spin_step = QSpinBox()
         self.spin_step.setRange(1, 50)
@@ -504,25 +803,45 @@ class BubbleEditorDialog(QDialog):
         mv.addWidget(btn_right)
         grp_move.setLayout(mv)
 
+        # Grupo ações
         grp_actions = QGroupBox("Ações")
         ac = QHBoxLayout()
-        btn_reset = QPushButton("Resetar para padrão")
-        btn_reset.clicked.connect(self.reset_layout)
-        btn_save = QPushButton("Salvar bolhas.txt")
-        btn_save.clicked.connect(self.salvar_layout)
-        ac.addWidget(btn_reset)
-        ac.addWidget(btn_save)
+        self.btn_reset = QPushButton("Resetar (esta página)")
+        self.btn_reset.clicked.connect(self.reset_layout)
+        self.btn_save = QPushButton("Salvar (esta página)")
+        self.btn_save.clicked.connect(self.salvar_layout)
+        self.btn_save_next = QPushButton("Salvar e Próxima")
+        self.btn_save_next.clicked.connect(self.salvar_e_proxima)
+        # >>> NOVO BOTÃO: Salvar padrão global e aplicar em TODAS as páginas
+        self.btn_apply_all = QPushButton("Salvar como padrão e aplicar em TODAS")
+        self.btn_apply_all.setStyleSheet("font-weight:bold;")
+        self.btn_apply_all.clicked.connect(self.salvar_padrao_e_aplicar_todas)
+
+        ac.addWidget(self.btn_reset)
+        ac.addWidget(self.btn_save)
+        ac.addWidget(self.btn_save_next)
+        ac.addWidget(self.btn_apply_all)
         grp_actions.setLayout(ac)
 
-        controls.addWidget(grp_move, stretch=1)
-        controls.addWidget(grp_actions, stretch=1)
+        controls.addWidget(grp_move, stretch=2)
+        controls.addWidget(grp_actions, stretch=4)
         main_layout.addLayout(controls)
 
-        info = QLabel("Dica: use também as setas do teclado para mover. A visualização usa o recorte definido em CROP.")
+        info = QLabel(
+            "Dica: use as setas do teclado para mover. A visualização usa o recorte definido em CROP.\n"
+            "Cada página possui seu próprio arquivo *_bolhas.txt em imagens_pdf/temp/.\n"
+            "O botão “Salvar como padrão e aplicar em TODAS” copia o layout atual para TODAS as páginas e também para o arquivo global bolhas.txt.\n"
+            "Ao clicar em “Salvar (esta página)” este layout fica TRAVADO (#LOCK=1) e não será auto-reposicionado no processamento."
+        )
         info.setStyleSheet("color:#444;")
         main_layout.addWidget(info)
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+        # Inicializa na primeira imagem (se houver)
+        if self.imagens:
+            self.carregar_imagem_por_indice(0)
+        self._atualizar_botoes_navegacao()
 
     def keyPressEvent(self, e):
         if e.key() == Qt.Key.Key_Left:
@@ -533,19 +852,33 @@ class BubbleEditorDialog(QDialog):
             self.move_all(0, -self.step)
         elif e.key() == Qt.Key.Key_Down:
             self.move_all(0, self.step)
+        elif e.key() == Qt.Key.Key_PageDown:
+            self.proxima_imagem()
+        elif e.key() == Qt.Key.Key_PageUp:
+            self.anterior_imagem()
         else:
             super().keyPressEvent(e)
 
-    def escolher_imagem(self):
-        start_dir = PASTA_TEMP if os.path.exists(PASTA_TEMP) else os.path.expanduser("~")
-        path, _ = QFileDialog.getOpenFileName(self, "Escolher imagem", start_dir, "Imagens (*.png *.jpg *.jpeg)")
-        if not path:
-            return
-        self.lbl_img_path.setText(path)
+    def _atualizar_botoes_navegacao(self):
+        tem_imagens = len(self.imagens) > 0
+        self.btn_prev.setEnabled(tem_imagens and self.idx > 0)
+        self.btn_next.setEnabled(tem_imagens and self.idx < len(self.imagens) - 1)
+        self.btn_save.setEnabled(tem_imagens and self.preview is not None)
+        self.btn_save_next.setEnabled(tem_imagens and self.preview is not None)
+        self.btn_reset.setEnabled(tem_imagens and self.preview is not None)
+        self.btn_apply_all.setEnabled(tem_imagens and self.preview is not None)
 
-        img = imread_unicode(path)
+    def carregar_imagem_por_indice(self, idx):
+        if not (0 <= idx < len(self.imagens)):
+            return
+        self.idx = idx
+        self.img_path_atual = self.imagens[self.idx]
+
+        img = imread_unicode(self.img_path_atual)
         if img is None:
-            QMessageBox.warning(self, "Erro", "Não foi possível abrir a imagem selecionada.")
+            QMessageBox.warning(self, "Erro", f"Não foi possível abrir a imagem:\n{self.img_path_atual}")
+            self.preview = None
+            self._atualizar_botoes_navegacao()
             return
 
         ALT_MAX, LARG_MAX = 1000, 800
@@ -558,16 +891,36 @@ class BubbleEditorDialog(QDialog):
         H, W = img_resized.shape[:2]
         if y1 > H or x1 > W:
             self.preview = None
-            self.info_crop_invalido = True
             self.lbl_preview.setPixmap(QPixmap())
-            QMessageBox.warning(self, "CROP fora da imagem",
-                                "A imagem é menor que a área de recorte definida em CROP.\nUse uma imagem gerada pela conversão do PDF ou ajuste CROP.")
+            QMessageBox.warning(
+                self, "CROP fora da imagem",
+                "A imagem é menor que a área de recorte definida em CROP.\n"
+                "Use uma imagem gerada pela conversão do PDF ou ajuste CROP."
+            )
+            self._atualizar_botoes_navegacao()
             return
 
-        self.info_crop_invalido = False
         area = img_resized[y0:y1, x0:x1]
         self.preview = area.copy()
+
+        # Carrega bolhas da página (ou global/padrão)
+        self.bolhas_esq, self.bolhas_dir = carregar_bolhas_da_imagem(self.img_path_atual, usar_fallback_global=True)
+
+        # Status
+        arq_pag = caminho_arquivo_bolhas_da_imagem(self.img_path_atual)
+        status = f"[{self.idx+1}/{len(self.imagens)}] {os.path.basename(self.img_path_atual)} | "
+        if os.path.exists(arq_pag):
+            status += f"Usando arquivo específico: {os.path.basename(arq_pag)}"
+            if arquivo_tem_lock(arq_pag):
+                status += " (LOCK)"
+        elif os.path.exists(ARQUIVO_BOLHAS):
+            status += f"Sem arquivo específico -> usando global: {ARQUIVO_BOLHAS}"
+        else:
+            status += "Sem arquivo específico -> LAYOUT PADRÃO"
+        self.lbl_status.setText(status)
+
         self.draw_overlay()
+        self._atualizar_botoes_navegacao()
 
     def draw_overlay(self):
         if self.preview is None:
@@ -585,7 +938,8 @@ class BubbleEditorDialog(QDialog):
         painter.end()
         label_w = max(400, self.lbl_preview.width())
         label_h = max(300, self.lbl_preview.height())
-        scaled = pix.scaled(label_w, label_h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        scaled = pix.scaled(label_w, label_h, Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation)
         self.lbl_preview.setPixmap(scaled)
 
     def move_all(self, dx, dy):
@@ -600,8 +954,46 @@ class BubbleEditorDialog(QDialog):
         self.draw_overlay()
 
     def salvar_layout(self):
-        salvar_bolhas(self.bolhas_esq, self.bolhas_dir)
-        QMessageBox.information(self, "Salvo", f"Coordenadas gravadas em '{ARQUIVO_BOLHAS}'.")
+        if not self.img_path_atual:
+            return
+        arq = salvar_bolhas_da_imagem(self.bolhas_esq, self.bolhas_dir, self.img_path_atual, lock=True)
+        QMessageBox.information(self, "Salvo", f"Coordenadas desta página gravadas em:\n{arq}\n(LOCK=1: auto-reposicionamento será ignorado)")
+
+    def salvar_e_proxima(self):
+        self.salvar_layout()
+        self.proxima_imagem()
+
+    def salvar_padrao_e_aplicar_todas(self):
+        """
+        Salva o layout atual como padrão GLOBAL (bolhas.txt) e aplica em TODAS as páginas (sobrescreve *_bolhas.txt).
+        """
+        if not self.imagens:
+            QMessageBox.warning(self, "Sem imagens", "Não há imagens em TEMP para aplicar.")
+            return
+        resp = QMessageBox.question(
+            self,
+            "Confirmar aplicação para TODAS",
+            "Isto vai sobrescrever o layout de TODAS as páginas em imagens_pdf/temp/ "
+            "e salvar como padrão global (bolhas.txt).\n\nDeseja continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        alterados = aplicar_layout_a_todas_as_imagens(self.bolhas_esq, self.bolhas_dir)
+        QMessageBox.information(
+            self, "Aplicado",
+            f"Padrão salvo em '{ARQUIVO_BOLHAS}' e aplicado em {alterados} página(s)."
+        )
+        # Atualiza preview/status (o atual já está com o mesmo layout)
+        self.draw_overlay()
+
+    def proxima_imagem(self):
+        if self.idx < len(self.imagens) - 1:
+            self.carregar_imagem_por_indice(self.idx + 1)
+
+    def anterior_imagem(self):
+        if self.idx > 0:
+            self.carregar_imagem_por_indice(self.idx - 1)
 
 
 # =============================
@@ -647,38 +1039,50 @@ class MainWindow(QMainWindow):
         self.pdf_path = None
         self.imagens_corrigidas = []
         self.gabarito = carregar_gabarito()
+
         self.setWindowTitle("Sistema de Correção de Cartões de Resposta")
-        self.setGeometry(200, 200, 560, 540)
+        self.setGeometry(200, 200, 660, 600)
+
         layout = QVBoxLayout()
-        self.label = QLabel("Escolha uma opção:")
+        self.label = QLabel("Fluxo de trabalho:")
         layout.addWidget(self.label)
+
         btn1 = QPushButton("1. Selecionar PDF")
         btn1.clicked.connect(self.selecionar_pdf)
         layout.addWidget(btn1)
+
         btn2 = QPushButton("2. Converter PDF em imagens (TEMP)")
         btn2.clicked.connect(self.converter_pdf)
         layout.addWidget(btn2)
-        btn3 = QPushButton("3. Processar imagens (RESULT)")
-        btn3.clicked.connect(self.processar_imagens)
-        layout.addWidget(btn3)
-        btn4 = QPushButton("4. Salvar PDF Final")
-        btn4.clicked.connect(self.salvar_pdf_final)
-        layout.addWidget(btn4)
-        btn5 = QPushButton("5. Editar Gabarito")
-        btn5.clicked.connect(self.editar_gabarito)
-        layout.addWidget(btn5)
-        btn6 = QPushButton("6. Reposicionar Bolhas (visual)")
+
+        btn6 = QPushButton("3. Reposicionar Bolhas (página por página)")
         btn6.clicked.connect(self.reposicionar_bolhas)
         layout.addWidget(btn6)
-        btn7 = QPushButton("7. Limpar TEMP/RESULT")
+
+        btn3 = QPushButton("4. Processar imagens (RESULT)")
+        btn3.clicked.connect(self.processar_imagens)
+        layout.addWidget(btn3)
+
+        btn4 = QPushButton("5. Salvar PDF Final")
+        btn4.clicked.connect(self.salvar_pdf_final)
+        layout.addWidget(btn4)
+
+        btn5 = QPushButton("Editar Gabarito")
+        btn5.clicked.connect(self.editar_gabarito)
+        layout.addWidget(btn5)
+
+        btn7 = QPushButton("Limpar TEMP/RESULT")
         btn7.clicked.connect(self.limpar)
         layout.addWidget(btn7)
+
         btn8 = QPushButton("Sair")
         btn8.clicked.connect(self.close)
         layout.addWidget(btn8)
+
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
+
         menubar = self.menuBar()
         file_menu = menubar.addMenu("Arquivo")
         act_sel = QAction("Selecionar PDF", self)
@@ -692,16 +1096,21 @@ class MainWindow(QMainWindow):
         dlg.setValue(0)
         start = time.time()
         cancelled = {"flag": False}
+
         def cb(atual, total):
             elapsed = time.time() - start
             media = elapsed / max(1, atual)
             restante = media * (total - atual)
             dlg.setMaximum(total)
             dlg.setValue(atual)
-            dlg.setLabelText(f"{titulo}\nProgresso: {atual}/{total}\nTempo decorrido: {int(elapsed)}s | Estimado restante: {int(restante)}s")
+            dlg.setLabelText(
+                f"{titulo}\nProgresso: {atual}/{total}\n"
+                f"Tempo decorrido: {int(elapsed)}s | Estimado restante: {int(restante)}s"
+            )
             QApplication.processEvents()
             if dlg.wasCanceled():
                 cancelled["flag"] = True
+
         worker(cb, cancelled)
         if cancelled["flag"]:
             QMessageBox.information(self, "Cancelado", "Operação cancelada.")
@@ -719,12 +1128,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Erro", "Selecione um PDF primeiro.")
             return
 
-        # Pergunta ao usuário quantos workers usar (opcional) - sugerimos cpu_count-1 por padrão
         cpu = os.cpu_count() or 1
         default_workers = max(1, cpu - 1)
-        n, ok = QInputDialog.getInt(self, "Número de processos",
-                                     f"Informe o número de processos (recomendado {default_workers}):",
-                                     value=default_workers, min=1, max=max(1, cpu))
+        n, ok = QInputDialog.getInt(
+            self, "Número de processos",
+            f"Informe o número de processos (recomendado {default_workers}):",
+            value=default_workers, min=1, max=max(1, cpu)
+        )
         if not ok:
             n = default_workers
 
@@ -741,7 +1151,14 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Erro na conversão", f"Falha ao converter PDF: {e}")
 
         self._run_with_progress("Convertendo PDF para imagens (TEMP)...", 1, worker)
-        QMessageBox.information(self, "Sucesso", "PDF convertido para imagens.")
+
+        if os.path.exists(PASTA_TEMP):
+            qtd_imgs = len([a for a in os.listdir(PASTA_TEMP) if a.lower().endswith((".png", ".jpg", ".jpeg"))])
+            QMessageBox.information(
+                self, "Sucesso",
+                f"PDF convertido para {qtd_imgs} imagens.\n"
+                f"Foram gerados arquivos *_bolhas.txt (template) por página em {PASTA_TEMP}."
+            )
 
     def processar_imagens(self):
         if not os.path.exists(PASTA_TEMP):
@@ -752,6 +1169,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Vazio", "Nenhuma imagem encontrada em TEMP.")
             return
         self.imagens_corrigidas = []
+
         def worker(cb, cancelled):
             def progress_cb(i, total):
                 if cancelled["flag"]:
@@ -760,9 +1178,10 @@ class MainWindow(QMainWindow):
             imgs = processar_todas_as_imagens(self.gabarito, progress_cb)
             if not cancelled["flag"]:
                 self.imagens_corrigidas = imgs
+
         self._run_with_progress("Processando imagens (RESULT)...", len(arquivos), worker)
         if self.imagens_corrigidas:
-            QMessageBox.information(self, "OK", f"{len(self.imagens_corrigidas)} imagens processadas.")
+            QMessageBox.information(self, "OK", f"{len(self.imagens_corrigidas)} imagens processadas.\nJSON salvo em:\n{ARQUIVO_RESULTADOS_JSON}")
 
     def salvar_pdf_final(self):
         if not self.imagens_corrigidas:
@@ -771,12 +1190,14 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getSaveFileName(self, "Salvar PDF", "", "PDF (*.pdf)")
         if not path:
             return
+
         def worker(cb, cancelled):
             def progress_cb(i, total):
                 if cancelled["flag"]:
                     return
                 cb(i, total)
             gerar_pdf_final(self.imagens_corrigidas, path, progress_cb)
+
         self._run_with_progress("Gerando PDF final...", len(self.imagens_corrigidas), worker)
         QMessageBox.information(self, "PDF Gerado", f"Arquivo salvo em:\n{path}")
 
@@ -788,12 +1209,18 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Gabarito", "Gabarito atualizado e salvo.")
 
     def reposicionar_bolhas(self):
+        if not os.path.exists(PASTA_TEMP) or not any(
+                a.lower().endswith((".png", ".jpg", ".jpeg")) for a in os.listdir(PASTA_TEMP)):
+            QMessageBox.warning(self, "Aviso",
+                                "Nenhuma imagem em TEMP.\nConverta um PDF antes de reposicionar as bolhas.")
+            return
         dlg = BubbleEditorDialog(self)
         dlg.exec()
 
     def limpar(self):
         limpar_pastas()
         QMessageBox.information(self, "Limpeza", "TEMP e RESULT foram apagadas!")
+
 
 # =============================
 # MAIN

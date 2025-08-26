@@ -1,0 +1,135 @@
+{
+  "003719901300": {
+    "arquivo_imagem": "pagina_1.png",
+    "timestamp": "2025-08-26 19:30:16",
+    "auto_reposicionamento": "OK",
+    "resumo": {
+      "acertos": 3,
+      "anuladas": 1,
+      "brancas": 0,
+      "total_questoes": 20
+    },
+    "detalhes": [
+      {
+        "questao": 1,
+        "resposta_aluno": "A",
+        "resposta_correta": "C",
+        "status": "wrong"
+      },
+      {
+        "questao": 2,
+        "resposta_aluno": "B",
+        "resposta_correta": "B",
+        "status": "correct"
+      },
+      {
+        "questao": 3,
+        "resposta_aluno": "C",
+        "resposta_correta": "A",
+        "status": "wrong"
+      },
+      {
+        "questao": 4,
+        "resposta_aluno": "C",
+        "resposta_correta": "C",
+        "status": "correct"
+      },
+      {
+        "questao": 5,
+        "resposta_aluno": "*",
+        "resposta_correta": "C",
+        "status": "annulled"
+      },
+      {
+        "questao": 6,
+        "resposta_aluno": "D",
+        "resposta_correta": "B",
+        "status": "wrong"
+      },
+      {
+        "questao": 7,
+        "resposta_aluno": "C",
+        "resposta_correta": "E",
+        "status": "wrong"
+      },
+      {
+        "questao": 8,
+        "resposta_aluno": "C",
+        "resposta_correta": "A",
+        "status": "wrong"
+      },
+      {
+        "questao": 9,
+        "resposta_aluno": "C",
+        "resposta_correta": "D",
+        "status": "wrong"
+      },
+      {
+        "questao": 10,
+        "resposta_aluno": "C",
+        "resposta_correta": "D",
+        "status": "wrong"
+      },
+      {
+        "questao": 11,
+        "resposta_aluno": "A",
+        "resposta_correta": "E",
+        "status": "wrong"
+      },
+      {
+        "questao": 12,
+        "resposta_aluno": "A",
+        "resposta_correta": "E",
+        "status": "wrong"
+      },
+      {
+        "questao": 13,
+        "resposta_aluno": "A",
+        "resposta_correta": "C",
+        "status": "wrong"
+      },
+      {
+        "questao": 14,
+        "resposta_aluno": "B",
+        "resposta_correta": "C",
+        "status": "wrong"
+      },
+      {
+        "questao": 15,
+        "resposta_aluno": "A",
+        "resposta_correta": "C",
+        "status": "wrong"
+      },
+      {
+        "questao": 16,
+        "resposta_aluno": "C",
+        "resposta_correta": "B",
+        "status": "wrong"
+      },
+      {
+        "questao": 17,
+        "resposta_aluno": "C",
+        "resposta_correta": "B",
+        "status": "wrong"
+      },
+      {
+        "questao": 18,
+        "resposta_aluno": "B",
+        "resposta_correta": "B",
+        "status": "correct"
+      },
+      {
+        "questao": 19,
+        "resposta_aluno": "C",
+        "resposta_correta": "A",
+        "status": "wrong"
+      },
+      {
+        "questao": 20,
+        "resposta_aluno": "D",
+        "resposta_correta": "C",
+        "status": "wrong"
+      }
+    ]
+  }
+}
