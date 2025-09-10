@@ -1,0 +1,25 @@
+Arquivo origem: imagens_pdf/temp\pagina_8.png
+PNG final: 063715178302.png
+Resumo: ['Acertos: 0/20', 'Anuladas: 20', 'Em branco: 0', 'Auto-reposicionamento: OK']
+
+Q1 (esq): decision=* reason=dif 0.003 < DIFF_MIN 0.12
+Q2 (esq): decision=* reason=dif 0.008 < DIFF_MIN 0.12
+Q3 (esq): decision=* reason=dif 0.048 < DIFF_MIN 0.12
+Q4 (esq): decision=* reason=dif 0.040 < DIFF_MIN 0.12
+Q5 (esq): decision=* reason=dif 0.016 < DIFF_MIN 0.12
+Q6 (esq): decision=* reason=dif 0.008 < DIFF_MIN 0.12
+Q7 (esq): decision=* reason=dif 0.029 < DIFF_MIN 0.12
+Q8 (esq): decision=* reason=dif 0.045 < DIFF_MIN 0.12
+Q9 (esq): decision=* reason=dif 0.016 < DIFF_MIN 0.12
+Q10 (esq): decision=* reason=dif 0.011 < DIFF_MIN 0.12
+Q11 (dir): decision=* reason=dif 0.034 < DIFF_MIN 0.12
+Q12 (dir): decision=* reason=dif 0.040 < DIFF_MIN 0.12
+Q13 (dir): decision=* reason=dif 0.016 < DIFF_MIN 0.12
+Q14 (dir): decision=* reason=dif 0.003 < DIFF_MIN 0.12
+Q15 (dir): decision=* reason=dif 0.000 < DIFF_MIN 0.12
+Q16 (dir): decision=* reason=dif 0.013 < DIFF_MIN 0.12
+Q17 (dir): decision=* reason=dif 0.000 < DIFF_MIN 0.12
+Q18 (dir): decision=* reason=dif 0.016 < DIFF_MIN 0.12
+Q19 (dir): decision=* reason=dif 0.024 < DIFF_MIN 0.12
+Q20 (dir): decision=* reason=dif 0.003 < DIFF_MIN 0.12
+

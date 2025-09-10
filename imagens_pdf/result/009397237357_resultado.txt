@@ -1,0 +1,25 @@
+Arquivo origem: imagens_pdf/temp\pagina_1.png
+PNG final: 009397237357.png
+Resumo: ['Acertos: 4/20', 'Anuladas: 0', 'Em branco: 0', 'Auto-reposicionamento: OK']
+
+Q1 (esq): decision=C reason=top 0.692 ok (2º 0.247)
+Q2 (esq): decision=D reason=top 0.785 ok (2º 0.236)
+Q3 (esq): decision=C reason=top 0.761 ok (2º 0.220)
+Q4 (esq): decision=D reason=top 0.775 ok (2º 0.170)
+Q5 (esq): decision=C reason=top 0.753 ok (2º 0.196)
+Q6 (esq): decision=D reason=top 0.793 ok (2º 0.236)
+Q7 (esq): decision=A reason=top 0.761 ok (2º 0.210)
+Q8 (esq): decision=B reason=top 0.772 ok (2º 0.215)
+Q9 (esq): decision=E reason=top 0.775 ok (2º 0.212)
+Q10 (esq): decision=B reason=top 0.790 ok (2º 0.223)
+Q11 (dir): decision=B reason=top 0.793 ok (2º 0.183)
+Q12 (dir): decision=C reason=top 0.775 ok (2º 0.247)
+Q13 (dir): decision=D reason=top 0.790 ok (2º 0.220)
+Q14 (dir): decision=C reason=top 0.764 ok (2º 0.247)
+Q15 (dir): decision=C reason=top 0.759 ok (2º 0.215)
+Q16 (dir): decision=D reason=top 0.804 ok (2º 0.210)
+Q17 (dir): decision=C reason=top 0.777 ok (2º 0.241)
+Q18 (dir): decision=C reason=top 0.764 ok (2º 0.252)
+Q19 (dir): decision=B reason=top 0.777 ok (2º 0.151)
+Q20 (dir): decision=A reason=top 0.772 ok (2º 0.220)
+
