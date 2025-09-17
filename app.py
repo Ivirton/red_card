@@ -15,9 +15,12 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QFileDialog,
     QMessageBox, QWidget, QVBoxLayout, QLabel, QComboBox,
     QScrollArea, QFormLayout, QDialog, QDialogButtonBox,
-    QProgressDialog, QHBoxLayout, QSpinBox, QGroupBox, QInputDialog
+    QProgressDialog, QHBoxLayout, QSpinBox, QGroupBox, QInputDialog, QStackedWidget
 )
 
+from gerar_gabaritos.construir_gabaritos import construir_gabaritos, obter_quant_gabaritos
+from gerar_gabaritos.gerar_gabaritos import gerar_gabaritos
+from utils import *
 
 # ======================================
 # CONFIGURAÇÕES GLOBAIS / PARÂMETROS
@@ -630,7 +633,6 @@ def limpar_pastas():
     if os.path.exists(PASTA_RESULT):
         shutil.rmtree(PASTA_RESULT, ignore_errors=True)
 
-
 # =============================
 # EDITOR VISUAL DE BOLHAS (por página)
 # =============================
@@ -936,15 +938,13 @@ class GabaritoDialog(QDialog):
 # =============================
 # MAIN WINDOW (PyQt6)
 # =============================
-class MainWindow(QMainWindow):
-    def __init__(self):
+class TelaCorrecao(QWidget):
+    def __init__(self, mainwindow):
         super().__init__()
+        self.mainwindow = mainwindow
         self.pdf_path = None
         self.imagens_corrigidas = []
         self.gabarito = carregar_gabarito()
-
-        self.setWindowTitle("Sistema de Correção de Cartões de Resposta")
-        self.setGeometry(200, 200, 660, 600)
 
         layout = QVBoxLayout()
         self.label = QLabel("Fluxo de trabalho:")
@@ -978,48 +978,12 @@ class MainWindow(QMainWindow):
         btn7.clicked.connect(self.limpar)
         layout.addWidget(btn7)
 
-        btn8 = QPushButton("Sair")
-        btn8.clicked.connect(self.close)
+        btn8 = QPushButton("Voltar")
+        btn8.clicked.connect(self.mainwindow.exibir_tela_inicial)
         layout.addWidget(btn8)
 
-        container = QWidget()
-        container.setLayout(layout)
-        self.setCentralWidget(container)
-
-        menubar = self.menuBar()
-        file_menu = menubar.addMenu("Arquivo")
-        act_sel = QAction("Selecionar PDF", self)
-        act_sel.triggered.connect(self.selecionar_pdf)
-        file_menu.addAction(act_sel)
-
-    def _run_with_progress(self, titulo, total_est, worker):
-        dlg = QProgressDialog(titulo, "Cancelar", 0, max(1, total_est), self)
-        dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
-        dlg.setMinimumDuration(0)
-        dlg.setValue(0)
-        start = time.time()
-        cancelled = {"flag": False}
-
-        def cb(atual, total):
-            elapsed = time.time() - start
-            media = elapsed / max(1, atual)
-            restante = media * (total - atual)
-            dlg.setMaximum(total)
-            dlg.setValue(atual)
-            dlg.setLabelText(
-                f"{titulo}\nProgresso: {atual}/{total}\n"
-                f"Tempo decorrido: {int(elapsed)}s | Estimado restante: {int(restante)}s"
-            )
-            QApplication.processEvents()
-            if dlg.wasCanceled():
-                cancelled["flag"] = True
-
-        worker(cb, cancelled)
-        if cancelled["flag"]:
-            QMessageBox.information(self, "Cancelado", "Operação cancelada.")
-            return False
-        return True
-
+        self.setLayout(layout)
+    
     def selecionar_pdf(self):
         path, _ = QFileDialog.getOpenFileName(self, "Selecionar PDF", "", "PDF (*.pdf)")
         if path:
@@ -1053,7 +1017,7 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Erro na conversão", f"Falha ao converter PDF: {e}")
 
-        self._run_with_progress("Convertendo PDF para imagens (TEMP)...", 1, worker)
+        run_with_progress(self, "Convertendo PDF para imagens (TEMP)...", 1, worker)
 
         if os.path.exists(PASTA_TEMP):
             qtd_imgs = len([a for a in os.listdir(PASTA_TEMP) if a.lower().endswith((".png", ".jpg", ".jpeg"))])
@@ -1082,7 +1046,7 @@ class MainWindow(QMainWindow):
             if not cancelled["flag"]:
                 self.imagens_corrigidas = imgs
 
-        self._run_with_progress("Processando imagens (RESULT)...", len(arquivos), worker)
+        run_with_progress(self, "Processando imagens (RESULT)...", len(arquivos), worker)
         if self.imagens_corrigidas:
             QMessageBox.information(self, "OK", f"{len(self.imagens_corrigidas)} imagens processadas.")
 
@@ -1101,7 +1065,7 @@ class MainWindow(QMainWindow):
                 cb(i, total)
             gerar_pdf_final(self.imagens_corrigidas, path, progress_cb)
 
-        self._run_with_progress("Gerando PDF final...", len(self.imagens_corrigidas), worker)
+            run_with_progress("Gerando PDF final...", len(self.imagens_corrigidas), worker)
         QMessageBox.information(self, "PDF Gerado", f"Arquivo salvo em:\n{path}")
 
     def editar_gabarito(self):
@@ -1124,7 +1088,88 @@ class MainWindow(QMainWindow):
         limpar_pastas()
         QMessageBox.information(self, "Limpeza", "TEMP e RESULT foram apagadas!")
 
+class TelaInicial(QWidget):
+    def __init__(self, mainwindow):
+        super().__init__()
+        self.mainwindow = mainwindow
 
+        layout = QVBoxLayout()
+
+        btn1 = QPushButton("1. Visualizar Alunos Cadastrados")
+        btn1.clicked.connect(self.mainwindow.exibir_tela_crud_alunos)
+        layout.addWidget(btn1)
+
+        btn2 = QPushButton("2. Gerar Gabaritos")
+        btn2.clicked.connect(self.gerar_gabaritos)
+        layout.addWidget(btn2)
+
+        btn3 = QPushButton("3. Corrigir Provas")
+        btn3.clicked.connect(self.mainwindow.exibir_tela_correcao)
+        layout.addWidget(btn3)
+
+        btn_sair = QPushButton("4. Sair")
+        btn_sair.clicked.connect(self.mainwindow.close)
+        layout.addWidget(btn_sair)
+
+        self.setLayout(layout)
+
+    def gerar_gabaritos(self):
+        if dialogo_confirmacao(parent=None, titulo="", mensagem=f"Deseja mesmo gerar {obter_quant_gabaritos()} gabaritos?"):
+            construir_gabaritos(self)
+            gerar_gabaritos(self)
+            deletar_gabaritos_temp()
+            QMessageBox.information(self, "Gabaritos gerados!", "Os gabaritos foram salvos na pasta 'gabaritos_pdf'.")
+
+class TelaCrudAlunos(QWidget):
+    def __init__(self, mainWindow):
+        super().__init__()
+        self.mainwindow = mainWindow
+
+        layout = QVBoxLayout()
+
+        btn_voltar = QPushButton("Voltar")
+        btn_voltar.clicked.connect(mainWindow.exibir_tela_inicial)
+        layout.addWidget(btn_voltar)
+
+        self.setLayout(layout)
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("OLIMPÍADA CAXIENSE DE MATEMÁTICA DAS ESCOLAS MUNICIPAIS")
+        self.setGeometry(200, 200, 660, 600)
+
+        self.stack = QStackedWidget()
+        self.setCentralWidget(self.stack)
+
+        self.tela_inicial = TelaInicial(self)
+        self.tela_correcao = TelaCorrecao(self)
+        self.tela_crud_alunos = TelaCrudAlunos(self)
+
+        self.stack.addWidget(self.tela_inicial)
+        self.stack.addWidget(self.tela_correcao)
+        self.stack.addWidget(self.tela_crud_alunos)
+
+        self.stack.setCurrentWidget(self.tela_inicial)
+
+        # menubar = self.menuBar()
+        # file_menu = menubar.addMenu("Arquivo")
+        # act_sel = QAction("Selecionar PDF", self)
+        # act_sel.triggered.connect(self.selecionar_pdf)
+        # file_menu.addAction(act_sel)
+
+    def exibir_tela_inicial(self):
+        self.stack.setCurrentWidget(self.tela_inicial)
+        self.setWindowTitle("OLIMPÍADA CAXIENSE DE MATEMÁTICA DAS ESCOLAS MUNICIPAIS")
+
+    def exibir_tela_correcao(self):
+        self.stack.setCurrentWidget(self.tela_correcao)
+        self.setWindowTitle("OLIMPÍADA CAXIENSE DE MATEMÁTICA DAS ESCOLAS MUNICIPAIS - CORREÇÃO DE PROVAS")
+
+    def exibir_tela_crud_alunos(self):
+        self.stack.setCurrentWidget(self.tela_crud_alunos)
+        self.setWindowTitle("OLIMPÍADA CAXIENSE DE MATEMÁTICA DAS ESCOLAS MUNICIPAIS - VISUALIZAR ALUNOS")
+    
 # =============================
 # MAIN
 # =============================

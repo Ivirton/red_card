@@ -363,7 +363,7 @@ def processar_cartao(caminho_imagem, gabarito, pasta_saida=PASTA_RESULT):
     # salva arquivo final e salva log simples por página
     os.makedirs(pasta_saida, exist_ok=True)
     base, _ = os.path.splitext(os.path.basename(caminho_imagem))
-    caminho_saida = os.path.join(pASTA_RESULT if (pasta_saida is None) else pasta_saida, f"{base}_corrigido.png")
+    caminho_saida = os.path.join(PASTA_RESULT if (pasta_saida is None) else pasta_saida, f"{base}_corrigido.png")
     # Corrige variável (caso pasta_saida seja None, mantém compatibilidade)
     if pasta_saida is None:
         pasta_saida = PASTA_RESULT
