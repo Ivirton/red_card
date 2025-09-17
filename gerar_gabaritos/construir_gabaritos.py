@@ -4,14 +4,10 @@ import qrcode
 from qrcode.image.pil import PilImage
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
-import os
 import sqlite3
 
 from gerar_gabaritos.id_para_escola import ID_PARA_ESCOLA
 from utils import run_with_progress
-
-from PyQt6.QtWidgets import QProgressDialog, QApplication
-from PyQt6.QtCore import Qt
 
 def creat_qr_code(data):
     qr = qrcode.QRCode(

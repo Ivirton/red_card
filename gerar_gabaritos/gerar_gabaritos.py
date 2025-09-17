@@ -3,9 +3,6 @@ from pathlib import Path
 import img2pdf
 import os
 
-from PyQt6.QtWidgets import QProgressDialog, QApplication
-from PyQt6.QtCore import Qt
-
 from utils import run_with_progress
 
 def files_from_dir(path):
@@ -17,8 +14,6 @@ def files_from_dir(path):
         if os.path.isfile(item_path):
             files.append(item_path)
     return files
-
-from utils import run_with_progress
 
 def gerar_gabaritos(parent=None):
     Path("gabaritos_pdf").mkdir(parents=True, exist_ok=True)
