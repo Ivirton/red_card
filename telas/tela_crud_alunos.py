@@ -15,7 +15,7 @@ class TelaCrudAlunos(QWidget):
         self.db = connect_db()
 
         self.model = QSqlTableModel(self, self.db)
-        self.model.setTable("Escola")
+        self.model.setTable("Aluno")
         self.model.setEditStrategy(QSqlTableModel.EditStrategy.OnManualSubmit)
         self.model.select()
         
@@ -26,6 +26,7 @@ class TelaCrudAlunos(QWidget):
 
         self.view = QTableView()
         self.view.setModel(self.model)
+        # self.view.setColumnHidden(0, True)
         
         header = self.view.horizontalHeader()
         header.moveSection(0, 4)
@@ -34,11 +35,15 @@ class TelaCrudAlunos(QWidget):
 
         botoes_layout = QHBoxLayout()
 
+        btn_add_aluno = QPushButton("Adicionar Aluno")
+        # btn_add_escola.clicked.connect()
+        botoes_layout.addWidget(btn_add_aluno)
+
         btn_salvar = QPushButton("Salvar")
         btn_salvar.clicked.connect(self.salvar_alteracoes)
         botoes_layout.addWidget(btn_salvar)
 
-        btn_cancelar = QPushButton("Cancelar")
+        btn_cancelar = QPushButton("Cancelar Alterações Atuais")
         btn_cancelar.clicked.connect(self.cancelar_alteracoes)
         botoes_layout.addWidget(btn_cancelar)
 
@@ -52,9 +57,23 @@ class TelaCrudAlunos(QWidget):
     def salvar_alteracoes(self):
         if not self.model.submitAll():
             QMessageBox.critical(self, "Erro", f"Erro ao salvar: {self.model.lastError().text()}")
-        else:
+            return
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Aviso")
+        msg.setText("Tem certeza que deseja salvar as alterações? Não poderão ser desfeitas depois!")
+
+        btn_salvar = msg.addButton("Salvar", QMessageBox.ButtonRole.AcceptRole)
+        btn_cancelar = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+
+        msg.exec()
+
+        clicked = msg.clickedButton()
+    
+        if clicked == btn_salvar:
             self._dirty = False
-            QMessageBox.information(self, "Alterações salvas.", "")
+            self.salvar_alteracoes()
+            QMessageBox.information(self, "Alterações salvas.", "Todos as alterações foram salvas.")
 
     def cancelar_alteracoes(self):
         self.model.revertAll()

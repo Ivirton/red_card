@@ -5,7 +5,6 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QStackedWidget
 from telas.tela_correcao import TelaCorrecao
 from telas.tela_inicial import TelaInicial
 from telas.tela_crud_escolas import TelaCrudEscolas
-# from telas.tela_crud_alunos import TelaCrudAlunos
 
 class MainWindow(QMainWindow):
     def __init__(self):
