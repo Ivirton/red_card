@@ -1,0 +1,7 @@
+# Ignorar todas as pastas __pycache__ em qualquer nível
+__pycache__/
+*/__pycache__/
+**/__pycache__/
+
+# Ignorar arquivos .pyc
+*.pyc

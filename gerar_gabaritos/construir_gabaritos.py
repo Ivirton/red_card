@@ -6,7 +6,6 @@ from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 import sqlite3
 
-from gerar_gabaritos.id_para_escola import ID_PARA_ESCOLA
 from utils import run_with_progress
 
 def creat_qr_code(data):
@@ -58,7 +57,7 @@ def construir_gabaritos(parent=None):
 
     db = sqlite3.connect("database")
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM Aluno")
+    cursor.execute("SELECT * FROM Aluno join Escola on Aluno.id_escola = Escola.id_escola")
     dados_alunos = cursor.fetchall()
 
     total = len(dados_alunos)
@@ -71,11 +70,11 @@ def construir_gabaritos(parent=None):
             gab_alfa = gabarito_alfa.copy()
             gab_beta = gabarito_beta.copy()
             gabarito = gab_alfa if aluno[3] == "Alfa" else gab_beta
+            escola = str(aluno[8])
 
             apply_qr_code(gabarito, aluno[2])
-            apply_student_info(gabarito, aluno[1], aluno[2], ID_PARA_ESCOLA[aluno[6]].upper())
+            apply_student_info(gabarito, aluno[1], aluno[2], escola.upper())
 
-            escola = ID_PARA_ESCOLA[aluno[6]]
 
             file_path = f"gabaritos/{escola}/alfa" if aluno[3] == "Alfa" else f"gabaritos/{escola}/beta"
 

@@ -11,7 +11,6 @@ import concurrent.futures
 from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtWidgets import QProgressDialog, QApplication, QMessageBox
 from PyQt6.QtCore import Qt
-from PyQt6.QtSql import QSqlDatabase
 
 from config.config import *
 
@@ -648,13 +647,3 @@ def dialogo_confirmacao(parent=None, titulo="Confirmação", mensagem="Deseja co
     dlg.exec()  
     
     return dlg.clickedButton() == btn_sim
-
-
-def connect_db():
-    db = QSqlDatabase.addDatabase("QSQLITE")
-    db.setDatabaseName("database")
-
-    if not db.open():
-        print("Erro ao conectar ao banco de dados!")
-        sys.exit(1)
-    return db

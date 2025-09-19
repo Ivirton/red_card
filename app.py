@@ -10,7 +10,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("OLIMPÍADA CAXIENSE DE MATEMÁTICA DAS ESCOLAS MUNICIPAIS")
-        self.setGeometry(200, 200, 800, 600)
+        self.setGeometry(200, 200, 900, 600)
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)

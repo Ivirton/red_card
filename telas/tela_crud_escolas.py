@@ -1,131 +1,81 @@
-from PyQt6.QtCore import (
-    pyqtSignal, QModelIndex, QModelIndex, pyqtSignal,
-    QIdentityProxyModel, QSize, Qt
-)
-
 from PyQt6.QtWidgets import (
     QPushButton, QMessageBox, QWidget, QVBoxLayout, 
-    QHBoxLayout, QTableView,  QStyledItemDelegate, 
-    QStyle, QStyleOptionButton, QApplication, QLineEdit,
-    QComboBox, QHeaderView
+    QHBoxLayout, QComboBox, QHeaderView, QTableWidget, 
+    QTableWidgetItem
 )
-
-from PyQt6.QtSql import QSqlTableModel
-from PyQt6.QtGui import QIntValidator
 
 from utils import *
 
-class ProxyComBotoes(QIdentityProxyModel):
-    def columnCount(self, parent=QModelIndex()):
-        return super().columnCount(parent) + 1  
+import db.db_crud as db_acess
 
-    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if index.column() == self.columnCount() - 1: 
-            if role == Qt.ItemDataRole.DisplayRole:
-                return ""
-            elif role == Qt.ItemDataRole.SizeHintRole:
-                return QSize(100, 30)
-        return super().data(index, role)
+from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QComboBox, QPushButton, QHBoxLayout, QVBoxLayout
 
-    def flags(self, index):
-        if index.column() == self.columnCount() - 1:
-            return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
-        return super().flags(index)
-
-    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
-        if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:
-            if section == self.columnCount() - 1:
-                return "Ações"
-        return super().headerData(section, orientation, role)
-
-class ButtonDelegate(QStyledItemDelegate):
-    clicked = pyqtSignal(QModelIndex)  
-
+class DialogAdicionarEscola(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._buttons = {}
+        self.setWindowTitle("Adicionar Escola")
+        self.setModal(True)
 
-    def paint(self, painter, option, index):
-        btn_option = QStyleOptionButton()
-        btn_option.rect = option.rect.adjusted(4, 4, -4, -4) 
-        btn_option.text = "Ver Alunos"
-        btn_option.state = QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_Raised
-        QApplication.style().drawControl(QStyle.ControlElement.CE_PushButton, btn_option, painter)
+        layout = QFormLayout()
 
-        self._buttons[(index.row(), index.column())] = btn_option.rect
+        self.input_nome = QLineEdit()
+        layout.addRow("Nome:", self.input_nome)
 
-    def editorEvent(self, event, model, option, index):
-       key = (index.row(), index.column())
-       
-       if key in self._buttons and self._buttons[key].contains(event.pos()):
-            self.clicked.emit(index)
-            return True
-       return False
+        self.input_email = QLineEdit()
+        layout.addRow("E-mail:", self.input_email)
 
-class CustomDelegate(QStyledItemDelegate):
-    def createEditor(self, parent, option, index):
-        col = index.column()
+        self.input_inep = QLineEdit()
+        layout.addRow("Inep:", self.input_inep)
 
-        if col in [1, 2, 3]:
-            editor = QLineEdit(parent)
-            return editor
-        
-        elif col == 4:
-            editor = QComboBox(parent)
-            editor.addItems(["Sede", "Campo"])
-            return editor
+        self.combo_area = QComboBox()
+        self.combo_area.addItems(["Sede", "Campo"])
+        layout.addRow("Área:", self.combo_area)
 
-        return super().createEditor(parent, option, index)
+        btn_layout = QHBoxLayout()
+        self.btn_ok = QPushButton("Adicionar")
+        self.btn_cancel = QPushButton("Cancelar")
+        btn_layout.addWidget(self.btn_ok)
+        btn_layout.addWidget(self.btn_cancel)
+
+        v_layout = QVBoxLayout()
+        v_layout.addLayout(layout)
+        v_layout.addLayout(btn_layout)
+        self.setLayout(v_layout)
+
+        self.btn_cancel.clicked.connect(self.reject)
+        self.btn_ok.clicked.connect(self.accept)
+
+    def get_data(self):
+        return {
+            "nome": self.input_nome.text().strip(),
+            "email": self.input_email.text().strip(),
+            "inep": self.input_inep.text().strip(),
+            "area": self.combo_area.currentText()
+        }
 
 class TelaCrudEscolas(QWidget):
     def __init__(self, mainWindow):
         super().__init__()
         self.mainwindow = mainWindow
-        layout = QVBoxLayout()
-        self.db = connect_db()
-
-        self.model = QSqlTableModel(self, self.db)
-        self.model.setTable("Escola")
-        self.model.setEditStrategy(QSqlTableModel.EditStrategy.OnManualSubmit)
-        self.model.select()
-
         self._dirty = False
-        self.model.dataChanged.connect(lambda *args: setattr(self, "_dirty", True))
-        self.model.rowsInserted.connect(lambda *args: setattr(self, "_dirty", True))
-        self.model.rowsRemoved.connect(lambda *args: setattr(self, "_dirty", True))
+        self.table = QTableWidget()
+        self.delete_rows = set()
 
-        self.view = QTableView()
+        layout = QVBoxLayout()
 
-        self.proxy = ProxyComBotoes(self)
-        self.proxy.setSourceModel(self.model)
-        self.view.setModel(self.proxy)
+        self.carregar_dados()
 
-        self.view.setColumnHidden(0, True)
+        self.table.setColumnHidden(0, True)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.itemChanged.connect(self.item_changed) 
 
-        edit_delegate = CustomDelegate(self.view)
-        self.view.setItemDelegate(edit_delegate)
-
-        delegate = ButtonDelegate(self.view)
-        self.view.setItemDelegateForColumn(self.proxy.columnCount() - 1, delegate)
-        self.view.setColumnWidth(self.proxy.columnCount() - 1, 120)  
-
-        def abrir_alunos(index):
-            src_index = self.proxy.mapToSource(index)
-            record = self.model.record(src_index.row())
-            escola_id = record.value("id")
-            # self.mainwindow.exibir_tela_alunos(escola_id)
-
-        delegate.clicked.connect(abrir_alunos)
-
-        self.view.horizontalHeader().setStretchLastSection(False)
-        self.view.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-
-        layout.addWidget(self.view)
+        layout.addWidget(self.table)
 
         botoes_layout = QHBoxLayout()
 
         btn_add_escola = QPushButton("Adicionar Escola")
-        # btn_add_escola.clicked.connect()
+        btn_add_escola.clicked.connect(self.adicionar_escola)
         botoes_layout.addWidget(btn_add_escola)
 
         btn_salvar = QPushButton("Salvar")
@@ -142,35 +92,68 @@ class TelaCrudEscolas(QWidget):
 
         layout.addLayout(botoes_layout)
         self.setLayout(layout)
+    
+    def carregar_dados(self):
+        self.table.blockSignals(True)
+
+        escolas = db_acess.EscolaData().get_all()
+        self.original_data = [list(escola) for escola in escolas] 
+
+        self.table.setRowCount(len(escolas))
+        self.table.setColumnCount(7)
+        self.table.setHorizontalHeaderLabels([
+            "id_escola", "Nome da Escola", "e-mail", "Inep", "Area", "Acessar Alunos", "Excluir Escola"
+        ])
+
+        for row_index, escola in enumerate(escolas):
+            for i in range(0, 4):
+                item = QTableWidgetItem(str(escola[i]))
+                self.table.setItem(row_index, i, item)
+            
+            combo = QComboBox()
+            combo.addItems(["Sede", "Campo"])
+            combo.setCurrentText(str(escola[4]))
+            combo.currentIndexChanged.connect(lambda _, r=row_index: self.combo_changed(r))
+            self.table.setCellWidget(row_index, 4, combo)
+
+            btn1 = QPushButton("Ver Alunos")
+            btn1.clicked.connect(lambda checked, r=row_index: self.abrir_alunos(r))
+            self.table.setCellWidget(row_index, 5, btn1)
+
+            btn2 = QPushButton("Excluir")
+            btn2.clicked.connect(lambda checked, r=row_index: self.excluir_escola(r))
+            self.table.setCellWidget(row_index, 6, btn2)
+
+        self.table.blockSignals(False)
+
+    def abrir_alunos(self, row):
+        item = self.table.item(row, 0)
+        escola_id = int(item.text())
+        print(f"Abrir alunos da escola {escola_id}")
+        # self.mainwindow.exibir_tela_alunos(escola_id)
 
     def cancelar_alteracoes(self):
-        self.model.revertAll()
+        self.table.blockSignals(True)
+
+        for row in range(self.table.rowCount()):
+            if row < len(self.original_data):
+                for col in range(0, 4):
+                    self.table.item(row, col).setText(str(self.original_data[row][col]))
+                
+                combo = self.table.cellWidget(row, 4)
+
+                if combo:
+                    combo.setCurrentText(str(self.original_data[row][4]))
+            
+            item_id = int(self.table.item(row, 0).text())
+
+            if item_id in self.delete_rows:
+                self.table.showRow(row)
+    
+        self.delete_rows.clear()
+
         self._dirty = False
-
-    def voltar(self):
-        if self._dirty:
-            msg = QMessageBox(self)
-            msg.setWindowTitle("Aviso")
-            msg.setText("Existem alterações não salvas. Deseja salvar antes de sair?")
-
-            btn_salvar = msg.addButton("Salvar", QMessageBox.ButtonRole.AcceptRole)
-            btn_descartar = msg.addButton("Descartar", QMessageBox.ButtonRole.DestructiveRole)
-            btn_cancelar = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
-
-            msg.exec()
-            clicked = msg.clickedButton()
-
-            if clicked == btn_salvar:
-                self.salvar_alteracoes()
-                self.mainwindow.exibir_tela_inicial()
-
-            elif clicked == btn_descartar:
-                self.cancelar_alteracoes()
-                self.mainwindow.exibir_tela_inicial()
-
-            return
-
-        self.mainwindow.exibir_tela_inicial()
+        self.table.blockSignals(False)
 
     def salvar_alteracoes(self):
         msg = QMessageBox(self) 
@@ -185,17 +168,42 @@ class TelaCrudEscolas(QWidget):
         clicked = msg.clickedButton() 
         
         if clicked == btn_salvar: 
-            if not self.model.submitAll(): 
-                QMessageBox.critical(self, "Erro", f"Erro ao salvar: {self.model.lastError().text()}") 
-                return 
+            try:
+                escola_data = db_acess.EscolaData()  
+                db = escola_data.db
+                db.transaction()
+
+                for escola_id in self.delete_rows:
+                    escola_data.delete(escola_id)
+
+                self.delete_rows.clear()
+
+                for row in range(self.table.rowCount()):
+                    escola_id_item = self.table.item(row, 0)
+                    escola_id = escola_id_item.text().strip()
+                    nome = self.table.item(row, 1).text()
+                    email = self.table.item(row, 2).text()
+                    inep = self.table.item(row, 3).text()
+                    area = self.table.cellWidget(row, 4).currentText()
+
+                    if escola_id == "":
+                        nova_id = escola_data.insert(nome=nome, email=email, inep=inep, area=area)
+                        escola_id_item.setText(str(nova_id)) 
+                        self.original_data.append([nova_id, nome, email, inep, area])
+
+                    else:
+                        escola_data.update(escola_id=int(escola_id), nome=nome, email=email, inep=inep, area=area)
+                        index = row
+                        self.original_data[index] = [int(escola_id), nome, email, inep, area]
+
+                db.commit()
+                self._dirty = False
+                QMessageBox.information(self, "Sucesso", "Alterações salvas com sucesso!")
+
+            except Exception as e:
+                db.rollback()
+                QMessageBox.critical(self, "Erro", f"Erro ao salvar: {e}")
             
-            self._dirty = False 
-            QMessageBox.information(self, "Alterações salvas.", "Todas as alterações foram salvas.")
-
-    def cancelar_alteracoes(self):
-        self.model.revertAll()
-        self._dirty = False
-
     def voltar(self):
         if self._dirty:
             msg = QMessageBox(self)
@@ -221,3 +229,87 @@ class TelaCrudEscolas(QWidget):
             return  
         
         self.mainwindow.exibir_tela_inicial()
+
+    def item_changed(self, item):
+        row = item.row()
+        col = item.column()
+
+        if row < len(self.original_data):
+            if col >= 4:
+                return
+
+            novo_valor = item.text()
+            valor_original = str(self.original_data[row][col])
+
+            if novo_valor != valor_original:
+                self._dirty = True
+    
+    def combo_changed(self, row):
+        if row < len(self.original_data):
+            novo_valor = self.table.cellWidget(row, 4).currentText()
+            valor_original = str(self.original_data[row][4])
+
+            if novo_valor != valor_original:
+                self._dirty = True
+    
+    def adicionar_escola(self):
+        dialog = DialogAdicionarEscola(self)
+
+        if dialog.exec():
+            data = dialog.get_data()
+            
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            self.table.setItem(row, 0, QTableWidgetItem(""))
+            self.table.setItem(row, 1, QTableWidgetItem(data["nome"]))
+            self.table.setItem(row, 2, QTableWidgetItem(data["email"]))
+            self.table.setItem(row, 3, QTableWidgetItem(data["inep"]))
+
+            combo = QComboBox()
+            combo.addItems(["Sede", "Campo"])
+            combo.setCurrentText(data["area"])
+            combo.currentIndexChanged.connect(lambda _, r=row: self.combo_changed(r))
+            self.table.setCellWidget(row, 4, combo)
+
+            btn1 = QPushButton("Ver Alunos")
+            btn1.clicked.connect(lambda _, r=row: self.abrir_alunos(r))
+            self.table.setCellWidget(row, 5, btn1)
+
+            btn2 = QPushButton("Excluir")
+            btn2.clicked.connect(lambda _, r=row: self.excluir_escola(r))
+            self.table.setCellWidget(row, 6, btn2)
+
+            self._dirty = True
+            QMessageBox.information(self, "Sucesso", "Escola adicionada com sucesso!")
+
+        
+    def excluir_escola(self, row):
+        nome_escola = str(self.table.item(row, 1).text())
+        
+        msg = QMessageBox(self) 
+        msg.setWindowTitle("Aviso") 
+        msg.setText(f"Tem certeza que deseja remover a escola \"{nome_escola}\"? Essa ação não poderá ser desfeita!") 
+            
+        btn_excluir = msg.addButton("Excluir", QMessageBox.ButtonRole.AcceptRole) 
+        btn_cancelar = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole) 
+            
+        msg.exec() 
+            
+        clicked = msg.clickedButton() 
+            
+        if clicked == btn_excluir: 
+            try:
+                item_id_text = self.table.item(row, 0).text()
+
+                if item_id_text.isdigit():
+                    self.delete_rows.add(int(item_id_text))
+                    self.table.hideRow(row) 
+
+                else:
+                    self.table.removeRow(row)   
+            
+                self._dirty = True
+                QMessageBox.information(self, "Sucesso", f"A escola {nome_escola} foi removida com sucesso!")
+
+            except Exception as e:
+                QMessageBox.critical(self, "Erro", f"Erro ao salvar: {e}")

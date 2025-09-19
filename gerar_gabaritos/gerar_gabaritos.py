@@ -1,7 +1,7 @@
-from gerar_gabaritos.id_para_escola import ID_PARA_ESCOLA
 from pathlib import Path
 import img2pdf
 import os
+import sqlite3
 
 from utils import run_with_progress
 
@@ -18,10 +18,15 @@ def files_from_dir(path):
 def gerar_gabaritos(parent=None):
     Path("gabaritos_pdf").mkdir(parents=True, exist_ok=True)
 
-    total = len(ID_PARA_ESCOLA)
+    db = sqlite3.connect("database")
+    cursor = db.cursor()
+    cursor.execute("SELECT Nome FROM Escola")
+    nomes_escola = [linha[0] for linha in cursor.fetchall()]
+
+    total = len(nomes_escola)
 
     def worker(cb, cancelled):
-        for i, nome_escola in enumerate(ID_PARA_ESCOLA.values(), start=1):
+        for i, nome_escola in enumerate(nomes_escola, start=1):
             if cancelled["flag"]:
                 break
 
