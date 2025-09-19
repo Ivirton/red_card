@@ -1,14 +1,13 @@
 from PyQt6.QtWidgets import (
     QPushButton, QMessageBox, QWidget, QVBoxLayout, 
-    QHBoxLayout, QComboBox, QHeaderView, QTableWidget, 
-    QTableWidgetItem
+    QHBoxLayout, QHeaderView, QTableWidget, 
+    QTableWidgetItem, QDialog, QFormLayout, QLineEdit
 )
-
-from utils import *
 
 import db.db_crud as db_acess
 
-from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QComboBox, QPushButton, QHBoxLayout, QVBoxLayout
+from utils import *
+from telas.telas_utils import *
 
 class DialogAdicionarEscola(QDialog):
     def __init__(self, parent=None):
@@ -27,7 +26,7 @@ class DialogAdicionarEscola(QDialog):
         self.input_inep = QLineEdit()
         layout.addRow("Inep:", self.input_inep)
 
-        self.combo_area = QComboBox()
+        self.combo_area = NoScrollComboBox()
         self.combo_area.addItems(["Sede", "Campo"])
         layout.addRow("Área:", self.combo_area)
 
@@ -69,6 +68,8 @@ class TelaCrudEscolas(QWidget):
         self.table.horizontalHeader().setStretchLastSection(False)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.itemChanged.connect(self.item_changed) 
+        
+        self.table.setItemDelegate(CleanEditDelegate())
 
         layout.addWidget(self.table)
 
@@ -110,7 +111,7 @@ class TelaCrudEscolas(QWidget):
                 item = QTableWidgetItem(str(escola[i]))
                 self.table.setItem(row_index, i, item)
             
-            combo = QComboBox()
+            combo = NoScrollComboBox()
             combo.addItems(["Sede", "Campo"])
             combo.setCurrentText(str(escola[4]))
             combo.currentIndexChanged.connect(lambda _, r=row_index: self.combo_changed(r))
@@ -129,8 +130,8 @@ class TelaCrudEscolas(QWidget):
     def abrir_alunos(self, row):
         item = self.table.item(row, 0)
         escola_id = int(item.text())
-        print(f"Abrir alunos da escola {escola_id}")
-        # self.mainwindow.exibir_tela_alunos(escola_id)
+        nome_escola = str(self.table.item(row, 1).text())
+        self.mainwindow.exibir_tela_alunos(escola_id, nome_escola)
 
     def cancelar_alteracoes(self):
         self.table.blockSignals(True)
@@ -265,7 +266,7 @@ class TelaCrudEscolas(QWidget):
             self.table.setItem(row, 2, QTableWidgetItem(data["email"]))
             self.table.setItem(row, 3, QTableWidgetItem(data["inep"]))
 
-            combo = QComboBox()
+            combo = NoScrollComboBox()
             combo.addItems(["Sede", "Campo"])
             combo.setCurrentText(data["area"])
             combo.currentIndexChanged.connect(lambda _, r=row: self.combo_changed(r))

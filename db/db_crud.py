@@ -39,11 +39,29 @@ class DBAcess:
 
         while query.next():
             results.append(tuple(query.value(i) for i in range(query.record().count())))
+            
         return results
     
 class AlunoData(DBAcess):
     def __init__(self):
         super().__init__("Aluno")
+    
+    def get_by_escola(self, id_escola):
+        query = QSqlQuery(self.db)
+        query.prepare(f"SELECT * FROM {self.table_name} WHERE id_escola = :id_escola")
+        query.bindValue(":id_escola", id_escola)
+
+        if not query.exec():
+            print(f"Erro ao buscar alunos da escola {id_escola}: {query.lastError().text()}")
+            return []
+
+        results = []
+
+        while query.next():
+            results.append(tuple(query.value(i) for i in range(query.record().count())))
+
+        return results
+
 
 class EscolaData(DBAcess):
     def __init__(self):
