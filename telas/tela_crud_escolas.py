@@ -129,8 +129,43 @@ class TelaCrudEscolas(QWidget):
 
     def abrir_alunos(self, row):
         item = self.table.item(row, 0)
-        escola_id = int(item.text())
+        escola_id = item.text()
+
+        if not escola_id.isdigit():
+            QMessageBox.information(
+                self, 
+                "Ação Negada!", "Não é possível visualizar alunos de uma escola ainda não cadastrada"
+                ", salve as alterações primeiro para poder utilizar essa ação."
+            )
+
+            return
+        
+        escola_id = int(escola_id)
         nome_escola = str(self.table.item(row, 1).text())
+        
+        if self._dirty:
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Aviso")
+            msg.setText("Existem alterações não salvas. Gostaria de salvar antes de avançar?")
+
+            btn_salvar = msg.addButton("Salvar", QMessageBox.ButtonRole.AcceptRole)
+            btn_descartar = msg.addButton("Descartar", QMessageBox.ButtonRole.DestructiveRole)
+            btn_cancelar = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+
+            msg.exec()
+
+            clicked = msg.clickedButton()
+
+            if clicked == btn_salvar:
+                self.salvar_alteracoes()
+                self.mainwindow.exibir_tela_alunos(escola_id, nome_escola)
+
+            elif clicked == btn_descartar:
+                self.cancelar_alteracoes()
+                self.mainwindow.exibir_tela_alunos(escola_id, nome_escola)
+            
+            return      
+        
         self.mainwindow.exibir_tela_alunos(escola_id, nome_escola)
 
     def cancelar_alteracoes(self):
@@ -299,18 +334,14 @@ class TelaCrudEscolas(QWidget):
         clicked = msg.clickedButton() 
             
         if clicked == btn_excluir: 
-            try:
-                item_id_text = self.table.item(row, 0).text()
+            item_id_text = self.table.item(row, 0).text()
 
-                if item_id_text.isdigit():
-                    self.delete_rows.add(int(item_id_text))
-                    self.table.hideRow(row) 
+            if item_id_text.isdigit():
+                self.delete_rows.add(int(item_id_text))
+                self.table.hideRow(row) 
 
-                else:
-                    self.table.removeRow(row)   
+            else:
+                self.table.removeRow(row)   
             
-                self._dirty = True
-                QMessageBox.information(self, "Sucesso", f"A escola {nome_escola} foi removida com sucesso!")
-
-            except Exception as e:
-                QMessageBox.critical(self, "Erro", f"Erro ao salvar: {e}")
+            self._dirty = True
+            QMessageBox.information(self, "Sucesso", f"A escola {nome_escola} foi removida com sucesso!")

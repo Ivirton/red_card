@@ -39,7 +39,7 @@ class DBAcess:
 
         while query.next():
             results.append(tuple(query.value(i) for i in range(query.record().count())))
-            
+
         return results
     
 class AlunoData(DBAcess):
@@ -61,7 +61,72 @@ class AlunoData(DBAcess):
             results.append(tuple(query.value(i) for i in range(query.record().count())))
 
         return results
+    
+    def insert(self, nome, codigo, nivel_prova, necessidade_especial, descricao_necessidade, id_escola):
+        query = QSqlQuery(self.db)
 
+        sql = f"""
+            INSERT INTO {self.table_name} (nome, codigo, nivel_prova, necessidade_especial, descricao_necessidade, id_escola)
+            VALUES (:nome, :codigo, :nivel_prova, :necessidade_especial, :descricao_necessidade, :id_escola)
+        """
+
+        query.prepare(sql)
+        query.bindValue(":nome", nome)
+        query.bindValue(":codigo", codigo)
+        query.bindValue(":nivel_prova", nivel_prova)
+        query.bindValue(":necessidade_especial", necessidade_especial)
+        query.bindValue(":descricao_necessidade", descricao_necessidade)
+        query.bindValue(":id_escola", id_escola)
+
+        if not query.exec():
+            print(f"Erro ao inserir escola: {query.lastError().text()}")
+            return None  
+
+        return query.lastInsertId()
+
+
+    def update(self, id_aluno, nome, codigo, nivel_prova, necessidade_especial, descricao_necessidade, id_escola):
+        query = QSqlQuery(self.db)
+
+        sql = f"""
+            UPDATE {self.table_name}
+            SET nome = :nome,
+                codigo = :codigo,
+                nivel_prova = :nivel_prova,
+                necessidade_especial = :necessidade_especial,
+                descricao_necessidade = :descricao_necessidade, 
+                id_escola = :id_escola
+            WHERE id_aluno = :id
+        """
+
+        query.prepare(sql)
+        query.bindValue(":nome", nome)
+        query.bindValue(":codigo", codigo)
+        query.bindValue(":nivel_prova", nivel_prova)
+        query.bindValue(":necessidade_especial", necessidade_especial)
+        query.bindValue(":id", id_aluno)
+        query.bindValue(":descricao_necessidade", descricao_necessidade)
+        query.bindValue(":id_escola", id_escola)
+
+        if not query.exec():
+            print(f"Erro ao atualizar aluno {id_aluno}: {query.lastError().text()}")
+            return False
+
+        return True
+
+    def delete(self, id_aluno):
+        query = QSqlQuery(self.db)
+
+        sql = f"DELETE FROM {self.table_name} WHERE id_aluno = :id"
+
+        query.prepare(sql)
+        query.bindValue(":id", id_aluno)
+
+        if not query.exec():
+            print(f"Erro ao excluir aluno {id_aluno}: {query.lastError().text()}")
+            return False
+
+        return True
 
 class EscolaData(DBAcess):
     def __init__(self):
@@ -83,11 +148,11 @@ class EscolaData(DBAcess):
 
         if not query.exec():
             print(f"Erro ao inserir escola: {query.lastError().text()}")
-            return False
+            return None  
 
-        return True
+        return query.lastInsertId()
 
-    def update(self, escola_id, nome, email, inep, area):
+    def update(self, id_escola, nome, email, inep, area):
         query = QSqlQuery(self.db)
 
         sql = f"""
@@ -104,10 +169,10 @@ class EscolaData(DBAcess):
         query.bindValue(":email", email)
         query.bindValue(":inep", inep)
         query.bindValue(":area", area)
-        query.bindValue(":id", escola_id)
+        query.bindValue(":id", id_escola)
 
         if not query.exec():
-            print(f"Erro ao atualizar escola {escola_id}: {query.lastError().text()}")
+            print(f"Erro ao atualizar escola {id_escola}: {query.lastError().text()}")
             return False
 
         return True
