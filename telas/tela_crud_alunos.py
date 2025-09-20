@@ -53,7 +53,7 @@ class DialogAdicionarAluno(QDialog):
         self.input_codigo.textChanged.connect(self.on_codigo_changed)
 
     def validar_codigo(self, codigo: str):
-        return (codigo not in self.codigos) and len(codigo) == 12
+        return (codigo not in self.codigos) and len(codigo) == 12 and codigo.isdigit()
 
     def on_codigo_changed(self, text: str):
         if not self.validar_codigo(text):
@@ -65,7 +65,11 @@ class DialogAdicionarAluno(QDialog):
         codigo = self.input_codigo.text()
 
         if not self.validar_codigo(codigo):
-            QMessageBox.warning(self, "Erro", "Código inválido ou já existente!")
+            QMessageBox.warning(
+                self, "Erro", 
+                "Código inválido ou já existente! Dica: o código precisa conter exatamente 12 dígitos numéricos."
+            )
+
             return
         self.accept()
 
@@ -207,21 +211,21 @@ class TelaCrudAlunos(QWidget):
                 db = aluno_data.db
                 db.transaction()
 
-                for aluno_id in self.delete_rows:
-                    aluno_data.delete(aluno_id)
+                for id_aluno in self.delete_rows:
+                    aluno_data.delete(id_aluno)
 
                 self.delete_rows.clear()
 
                 for row in range(self.table.rowCount()):
-                    aluno_id_item = self.table.item(row, 0)
-                    aluno_id = aluno_id_item.text().strip()
+                    id_aluno_item = self.table.item(row, 0)
+                    id_aluno = id_aluno_item.text().strip()
                     nome = self.table.item(row, 1).text()
                     codigo = self.table.item(row, 2).text()
                     nivel_prova = self.table.cellWidget(row, 3).currentText()
                     necessidade_especial = self.table.cellWidget(row, 4).currentText()
                     descricao_necessidade = self.table.item(row, 5).text()
 
-                    if aluno_id == "":
+                    if id_aluno == "":
                         nova_id = aluno_data.insert(
                             nome=nome, codigo=codigo, nivel_prova=nivel_prova, 
                             necessidade_especial=necessidade_especial, 
@@ -229,19 +233,19 @@ class TelaCrudAlunos(QWidget):
                             id_escola=self.id_escola
                         )
 
-                        aluno_id_item.setText(str(nova_id)) 
+                        id_aluno_item.setText(str(nova_id)) 
                         self.original_data.append([nova_id, nome, codigo, nivel_prova, necessidade_especial, 
                             descricao_necessidade, self.id_escola])
 
                     else:
                         aluno_data.update(
-                            id_aluno=int(aluno_id), nome=nome, codigo=codigo, nivel_prova=nivel_prova, 
+                            id_aluno=int(id_aluno), nome=nome, codigo=codigo, nivel_prova=nivel_prova, 
                             necessidade_especial=necessidade_especial, descricao_necessidade=descricao_necessidade,
                             id_escola=self.id_escola
                         )
 
                         index = row
-                        self.original_data[index] = [int(aluno_id), nome, codigo, nivel_prova, 
+                        self.original_data[index] = [int(id_aluno), nome, codigo, nivel_prova, 
                             necessidade_especial, descricao_necessidade, self.id_escola]
 
                 db.commit()

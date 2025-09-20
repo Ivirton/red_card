@@ -209,28 +209,28 @@ class TelaCrudEscolas(QWidget):
                 db = escola_data.db
                 db.transaction()
 
-                for escola_id in self.delete_rows:
-                    escola_data.delete(escola_id)
+                for id_escola in self.delete_rows:
+                    escola_data.delete(id_escola)
 
                 self.delete_rows.clear()
 
                 for row in range(self.table.rowCount()):
-                    escola_id_item = self.table.item(row, 0)
-                    escola_id = escola_id_item.text().strip()
+                    id_escola_item = self.table.item(row, 0)
+                    id_escola = id_escola_item.text().strip()
                     nome = self.table.item(row, 1).text()
                     email = self.table.item(row, 2).text()
                     inep = self.table.item(row, 3).text()
                     area = self.table.cellWidget(row, 4).currentText()
 
-                    if escola_id == "":
+                    if id_escola == "":
                         nova_id = escola_data.insert(nome=nome, email=email, inep=inep, area=area)
-                        escola_id_item.setText(str(nova_id)) 
+                        id_escola_item.setText(str(nova_id)) 
                         self.original_data.append([nova_id, nome, email, inep, area])
 
                     else:
-                        escola_data.update(escola_id=int(escola_id), nome=nome, email=email, inep=inep, area=area)
+                        escola_data.update(id_escola=int(id_escola), nome=nome, email=email, inep=inep, area=area)
                         index = row
-                        self.original_data[index] = [int(escola_id), nome, email, inep, area]
+                        self.original_data[index] = [int(id_escola), nome, email, inep, area]
 
                 db.commit()
                 self._dirty = False
